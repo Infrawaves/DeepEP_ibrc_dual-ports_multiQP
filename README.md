@@ -5,7 +5,7 @@ The main contributions of this work are summarized as follows:
 
 1. **Transparent Dual-Port and Multi-QP Support**: We modify NVSHMEM to enable dual-port and multi-Queue Pair (QP) support within the IBRC transport layer. This enhancement is fully decoupled from upper-layer applications (e.g., DeepEP).
 2. **Comparable performance in ibrc**: Our solution achieves performance parity between dual-port and single-port environment. Simultaneously, our performance in RoCE is not inferior to IB or the current used ibgda stratgey.
-3. **NCCL Version Sensitivity in DeepEP**: We are the first to realize that different nccl versions may have an impact on DeepEP performance, on which we find out the potential causes and give a solution in higher version of nccl.
+3. **NCCL Version Sensitivity in DeepEP**: We are the [first](https://github.com/deepseek-ai/DeepEP/issues/82) to realize that different nccl versions may have an impact on DeepEP performance, on which we find out the potential causes and give a solution in higher version of nccl.
 
 ## Performance
 ### normal kernels test
