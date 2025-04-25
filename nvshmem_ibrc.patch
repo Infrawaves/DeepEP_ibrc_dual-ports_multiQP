@@ -1,0 +1,2729 @@
+diff --git a/examples/moe_shuffle.cu b/examples/moe_shuffle.cu
+index 9454206..3511285 100644
+--- a/examples/moe_shuffle.cu
++++ b/examples/moe_shuffle.cu
+@@ -277,10 +277,10 @@ static __forceinline__ __device__ void _token_shuffle_allpush(
+                 recv_data + (expert_start + pos_in_expert) * hidden_dim +
+                     my_warp_idx * num_elems_per_warp,
+                 send_data + src_row * hidden_dim + my_warp_idx * num_elems_per_warp,
+-                num_elems_per_warp, peer);
++                num_elems_per_warp, peer, 0);
+         } else {
+             nvshmemx_float_put_nbi_block(recv_data + (expert_start + pos_in_expert) * hidden_dim,
+-                                         send_data + src_row * hidden_dim, hidden_dim, peer);
++                                         send_data + src_row * hidden_dim, hidden_dim, peer, 0);
+         }
+ 
+         block_offset += 1;
+@@ -358,10 +358,10 @@ static __forceinline__ __device__ void _token_shuffle_by_peer(
+                 recv_data + (expert_start + pos_in_expert) * hidden_dim +
+                     my_warp_idx * num_elems_per_warp,
+                 send_data + src_row * hidden_dim + my_warp_idx * num_elems_per_warp,
+-                num_elems_per_warp, peer);
++                num_elems_per_warp, peer, 0);
+         } else {
+             nvshmemx_float_put_nbi_block(recv_data + (expert_start + pos_in_expert) * hidden_dim,
+-                                         send_data + src_row * hidden_dim, hidden_dim, peer);
++                                         send_data + src_row * hidden_dim, hidden_dim, peer, 0);
+         }
+         true_block_offset += num_blocks;
+         rounded_block_offset = true_block_offset % num_rows;
+diff --git a/examples/ring-bcast.cu b/examples/ring-bcast.cu
+index 820173b..21e5089 100644
+--- a/examples/ring-bcast.cu
++++ b/examples/ring-bcast.cu
+@@ -29,7 +29,7 @@ __global__ void ring_bcast(int *data, size_t nelem, int root, uint64_t *psync) {
+ 
+     nvshmem_int_put(data, data, nelem, peer);
+     nvshmem_fence();
+-    nvshmemx_signal_op(psync, 1, NVSHMEM_SIGNAL_SET, peer);
++    nvshmemx_signal_op(psync, 1, NVSHMEM_SIGNAL_SET, peer, 0);
+ 
+     *psync = 0;
+ }
+diff --git a/perftest/device/pt-to-pt/shmem_p_ping_pong_latency.cu b/perftest/device/pt-to-pt/shmem_p_ping_pong_latency.cu
+index 6c6e5c5..b74de30 100644
+--- a/perftest/device/pt-to-pt/shmem_p_ping_pong_latency.cu
++++ b/perftest/device/pt-to-pt/shmem_p_ping_pong_latency.cu
+@@ -44,7 +44,7 @@ __global__ void ping_pong(int *data_d, uint64_t *flag_d, int len, int pe, int it
+ 
+             if (!tid) {
+                 nvshmem_fence();
+-                nvshmemx_signal_op(flag_d, (i + 1), NVSHMEM_SIGNAL_SET, peer);
++                nvshmemx_signal_op(flag_d, (i + 1), NVSHMEM_SIGNAL_SET, peer, 0);
+             }
+             __syncthreads();
+         } else {
+@@ -55,7 +55,7 @@ __global__ void ping_pong(int *data_d, uint64_t *flag_d, int len, int pe, int it
+ 
+             if (!tid) {
+                 nvshmem_fence();
+-                nvshmemx_signal_op(flag_d, (i + 1), NVSHMEM_SIGNAL_SET, peer);
++                nvshmemx_signal_op(flag_d, (i + 1), NVSHMEM_SIGNAL_SET, peer, 0);
+             }
+             __syncthreads();
+ 
+diff --git a/perftest/device/pt-to-pt/shmem_put_bw.cu b/perftest/device/pt-to-pt/shmem_put_bw.cu
+index d8fa907..6f717fa 100644
+--- a/perftest/device/pt-to-pt/shmem_put_bw.cu
++++ b/perftest/device/pt-to-pt/shmem_put_bw.cu
+@@ -27,7 +27,7 @@ __global__ void bw(double *data_d, volatile unsigned int *counter_d, int len, in
+     peer = !pe;
+     for (i = 0; i < iter; i++) {
+         nvshmemx_double_put_nbi_block(data_d + (bid * (len / nblocks)),
+-                                      data_d + (bid * (len / nblocks)), len / nblocks, peer);
++                                      data_d + (bid * (len / nblocks)), len / nblocks, peer, 0);
+ 
+         // synchronizing across blocks
+         __syncthreads();
+diff --git a/perftest/device/pt-to-pt/shmem_put_ping_pong_latency.cu b/perftest/device/pt-to-pt/shmem_put_ping_pong_latency.cu
+index 27b79dd..cfee293 100644
+--- a/perftest/device/pt-to-pt/shmem_put_ping_pong_latency.cu
++++ b/perftest/device/pt-to-pt/shmem_put_ping_pong_latency.cu
+@@ -35,13 +35,13 @@ __global__ void ping_pong(int *data_d, uint64_t *flag_d, int len, int pe, int it
+ 
+             nvshmem_fence();
+ 
+-            nvshmemx_signal_op(flag_d, i + 1, NVSHMEM_SIGNAL_SET, peer);
++            nvshmemx_signal_op(flag_d, i + 1, NVSHMEM_SIGNAL_SET, peer, 0);
+         } else {
+             nvshmem_int_put_nbi(data_d, data_d, len, peer);
+ 
+             nvshmem_fence();
+ 
+-            nvshmemx_signal_op(flag_d, i + 1, NVSHMEM_SIGNAL_SET, peer);
++            nvshmemx_signal_op(flag_d, i + 1, NVSHMEM_SIGNAL_SET, peer, 0);
+ 
+             nvshmem_uint64_wait_until(flag_d, NVSHMEM_CMP_EQ, (i + 1));
+         }
+diff --git a/perftest/device/pt-to-pt/shmem_signal_ping_pong_latency.cu b/perftest/device/pt-to-pt/shmem_signal_ping_pong_latency.cu
+index 89b043d..84c65a8 100644
+--- a/perftest/device/pt-to-pt/shmem_signal_ping_pong_latency.cu
++++ b/perftest/device/pt-to-pt/shmem_signal_ping_pong_latency.cu
+@@ -32,9 +32,9 @@ __global__ void ping_pong(uint64_t *flag_d, int pe, int iter) {
+         if (pe) {
+             nvshmem_uint64_wait_until(flag_d, NVSHMEM_CMP_EQ, (i + 1));
+ 
+-            nvshmemx_signal_op(flag_d, (i + 1), NVSHMEM_SIGNAL_SET, peer);
++            nvshmemx_signal_op(flag_d, (i + 1), NVSHMEM_SIGNAL_SET, peer, 0);
+         } else {
+-            nvshmemx_signal_op(flag_d, (i + 1), NVSHMEM_SIGNAL_SET, peer);
++            nvshmemx_signal_op(flag_d, (i + 1), NVSHMEM_SIGNAL_SET, peer, 0);
+ 
+             nvshmem_uint64_wait_until(flag_d, NVSHMEM_CMP_EQ, (i + 1));
+         }
+diff --git a/src/device/comm/transfer_device.cu b/src/device/comm/transfer_device.cu
+index 18cfe89..302ae8a 100644
+--- a/src/device/comm/transfer_device.cu
++++ b/src/device/comm/transfer_device.cu
+@@ -121,7 +121,7 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
+     {
+         int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+         if (!myIdx) {
+-            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op);
++            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op, 0);
+             nvshmemi_proxy_quiet(false);
+             if (SCOPE == nvshmemi_threadgroup_thread)
+                 __threadfence_block(); /* to prevent reuse of src buffer before quiet completion;
+@@ -150,9 +150,9 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
+     {
+         int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+         if (!myIdx) {
+-            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, NVSHMEMI_OP_PUT);
++            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, NVSHMEMI_OP_PUT, 0);
+             nvshmemi_proxy_fence();
+-            nvshmemi_proxy_amo_nonfetch<uint64_t>(sig_addr, signal, pe, sig_op);
++            nvshmemi_proxy_amo_nonfetch<uint64_t>(sig_addr, signal, pe, sig_op, 0);
+             if (is_nbi == 0) {
+                 nvshmemi_proxy_quiet(false);
+                 if (SCOPE == nvshmemi_threadgroup_thread)
+@@ -173,7 +173,7 @@ TRANSFER_REPT_FOR_ALL_SCOPES(TRANSFER_DECL_PUT_SIGNAL)
+ 
+ template <threadgroup_t SCOPE, nvshmemi_op_t channel_op>
+ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_transfer_rma_nbi(
+-    void *rptr, void *lptr, size_t bytes, int pe) {
++    void *rptr, void *lptr, size_t bytes, int pe, int channelId) {
+ #ifdef NVSHMEM_IBGDA_SUPPORT
+     if (nvshmemi_device_state_d.ibgda_is_initialized) {
+         nvshmemi_ibgda_rma_nbi<SCOPE, channel_op>(rptr, lptr, bytes, pe);
+@@ -181,15 +181,15 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
+ #endif
+     {
+         int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+-        if (!myIdx) nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op);
++        if (!myIdx) nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op, channelId);
+     }
+ }
+ 
+ #define TRANSFER_DECL_RMA_NBI(SCOPE)                                            \
+     template __device__ void nvshmemi_transfer_rma_nbi<SCOPE, NVSHMEMI_OP_PUT>( \
+-        void *rptr, void *lptr, size_t bytes, int pe);                          \
++        void *rptr, void *lptr, size_t bytes, int pe, int channelId);          \
+     template __device__ void nvshmemi_transfer_rma_nbi<SCOPE, NVSHMEMI_OP_GET>( \
+-        void *rptr, void *lptr, size_t bytes, int pe);
++        void *rptr, void *lptr, size_t bytes, int pe, int channelId);
+ 
+ TRANSFER_REPT_FOR_ALL_SCOPES(TRANSFER_DECL_RMA_NBI)
+ 
+@@ -217,20 +217,20 @@ TRANSFER_REPT_FOR_EXTENDED_AMO_TYPES(TRANSFER_DECL_AMO_FETCH);
+ 
+ template <typename T>
+ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_transfer_amo_nonfetch(
+-    void *rptr, T value, int pe, nvshmemi_amo_t op) {
++    void *rptr, T value, int pe, nvshmemi_amo_t op, int channelId) {
+ #ifdef NVSHMEM_IBGDA_SUPPORT
+     if (nvshmemi_device_state_d.ibgda_is_initialized) {
+         nvshmemi_ibgda_amo_nonfetch<T>(rptr, value, pe, op);
+     } else
+ #endif
+     {
+-        nvshmemi_proxy_amo_nonfetch<T>(rptr, value, pe, op);
++        nvshmemi_proxy_amo_nonfetch<T>(rptr, value, pe, op, channelId);
+     }
+ }
+ 
+ #define TRANSFER_DECL_AMO_NONFETCH(Type)                                                        \
+     template __device__ void nvshmemi_transfer_amo_nonfetch<Type>(void *rptr, const Type value, \
+-                                                                  int pe, nvshmemi_amo_t op);
++                                                                  int pe, nvshmemi_amo_t op, int channelId);
+ 
+ TRANSFER_REPT_FOR_STANDARD_AMO_TYPES(TRANSFER_DECL_AMO_NONFETCH);
+ TRANSFER_REPT_FOR_EXTENDED_AMO_TYPES(TRANSFER_DECL_AMO_NONFETCH);
+diff --git a/src/host/comm/putget.cpp b/src/host/comm/putget.cpp
+index 344aa80..f69d845 100644
+--- a/src/host/comm/putget.cpp
++++ b/src/host/comm/putget.cpp
+@@ -267,16 +267,18 @@ static void nvshmemi_prepare_and_post_rma(const char *apiname, nvshmemi_op_t des
+         if (verb.desc == NVSHMEMI_OP_P) {
+             rma_memdesc_t localdesc, remotedesc;
+             localdesc.ptr = lptr;
+-            localdesc.handle = NULL;
++            localdesc.handle[0] = NULL;
++            localdesc.handle[1] = NULL;
+             NVSHMEMU_UNMAPPED_PTR_PE_TRANSLATE(remotedesc.ptr, rptr, pe);
+-            nvshmemi_get_remote_mem_handle(&remotedesc, NULL, rptr, pe, t);
+-            status = tcurr->host_ops.rma(tcurr, pe, verb, &remotedesc, &localdesc, bytesdesc, 0);
++            nvshmemi_get_remote_mem_handle(&remotedesc, NULL, rptr, pe, t, 0);
++            nvshmemi_get_remote_mem_handle(&remotedesc, NULL, rptr, pe, t, 1);
++            status = tcurr->host_ops.rma(tcurr, pe, verb, &remotedesc, &localdesc, bytesdesc, 0, 0);
+             if (unlikely(status)) {
+                 NVSHMEMI_ERROR_PRINT("aborting due to error in process_channel_dma\n");
+                 exit(-1);
+             }
+         } else {
+-            nvshmemi_process_multisend_rma(tcurr, t, pe, verb, rptr, lptr, nelems * elembytes, 0);
++            nvshmemi_process_multisend_rma(tcurr, t, pe, verb, rptr, lptr, nelems * elembytes, 0, 0);
+         }
+         goto out;
+     }
+diff --git a/src/host/mem/mem.cpp b/src/host/mem/mem.cpp
+index aaac731..056579f 100644
+--- a/src/host/mem/mem.cpp
++++ b/src/host/mem/mem.cpp
+@@ -181,7 +181,7 @@ static int buffer_register(nvshmem_transport_t transport, void *addr, size_t len
+         if (NULL != transport && NVSHMEMI_TRANSPORT_OPS_IS_GET_MEM(transport)) {
+             assert(register_length < NVSHMEMI_DMA_BUF_MAX_LENGTH);
+             status = transport->host_ops.get_mem_handle(handle[i].handle, NULL, (void *)addr_calc,
+-                                                        register_length, transport, true);
++                                                        register_length, transport, true, 0);
+             if (status) {
+                 NVSHMEMI_ERROR_PRINT("Unable to assign new memory handle.\n");
+                 goto out_unlock;
+diff --git a/src/host/mem/mem_heap.cpp b/src/host/mem/mem_heap.cpp
+index 8271b11..0e1f2d5 100644
+--- a/src/host/mem/mem_heap.cpp
++++ b/src/host/mem/mem_heap.cpp
+@@ -184,7 +184,7 @@ void nvshmemi_symmetric_heap::heap_deallocate(void *ptr) {
+ }
+ 
+ void nvshmemi_symmetric_heap::update_idx_in_handle(void *addr, size_t size) {
+-    idx_in_handles_.push_back(std::make_tuple(handles_.size() - 1, (char *)(addr), size));
++    idx_in_handles_.push_back(std::make_tuple(handles_[0].size() - 1, (char *)(addr), size));
+ }
+ 
+ void nvshmemi_symmetric_heap::set_heap_size_attr(size_t mem_granularity, size_t *heapextra,
+@@ -248,13 +248,15 @@ nvshmemi_symmetric_heap::~nvshmemi_symmetric_heap() {
+                 (NVSHMEMI_TRANSPORT_IS_CAP(state->transports[j], i, NVSHMEM_TRANSPORT_CAP_MAP));
+             if (!is_p2p_transport) continue;
+ 
+-            NVSHMEMU_FOR_EACH(k, handles_.size()) {
+-                close(*(int *)&handles_[k][i * state->num_initialized_transports + j]);
++            NVSHMEMU_FOR_EACH(k, handles_[0].size()) {
++                close(*(int *)&handles_[0][k][i * state->num_initialized_transports + j]);
++                close(*(int *)&handles_[1][k][i * state->num_initialized_transports + j]);
+             }
+         }
+     }
+ 
+-    handles_.clear();
++    handles_[0].clear();
++    handles_[1].clear();
+     idx_in_handles_.clear();
+     NVSHMEMU_HOST_PTR_FREE(peer_heap_base_p2p_);
+ }
+@@ -497,9 +499,14 @@ int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::cleanup_symmetric_heap() {
+     NVSHMEMU_FOR_EACH_IF(
+         i, state->npes, (((int)i == state->mype) && (heap_base_ != NULL)),
+         {NVSHMEMU_FOR_EACH_IF(
+-            j, handles_.size(), ((j == 0) || (j > 0 && !nvshmemi_device_state.enable_rail_opt)), {
++            j, handles_[0].size(), ((j == 0) || (j > 0 && !nvshmemi_device_state.enable_rail_opt)), {
+                 status = remote_tran.release_mem_handles(
+-                    &handles_[j][i * state->num_initialized_transports],
++                    &handles_[0][j][i * state->num_initialized_transports],
++                    *(dynamic_cast<nvshmemi_symmetric_heap *>(this)));
++                NVSHMEMI_NE_ERROR_JMP(status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
++                                      "cleanup local handles failed \n");
++                status = remote_tran.release_mem_handles(
++                    &handles_[1][j][i * state->num_initialized_transports],
+                     *(dynamic_cast<nvshmemi_symmetric_heap *>(this)));
+                 NVSHMEMI_NE_ERROR_JMP(status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
+                                       "cleanup local handles failed \n");
+@@ -546,10 +553,15 @@ int nvshmemi_symmetric_heap_static::cleanup_symmetric_heap() {
+          typeid(decltype(this)).name());
+ 
+     NVSHMEMU_FOR_EACH_IF(i, state->npes, (((int)i == state->mype) && (heap_base_ != NULL)), {
+-        NVSHMEMU_FOR_EACH(j, handles_.size()) {
++        NVSHMEMU_FOR_EACH(j, handles_[0].size()) {
+             if ((j == 0) || (j > 0 && !nvshmemi_device_state.enable_rail_opt)) {
+                 status = remotetran.release_mem_handles(
+-                    &handles_[j][i * state->num_initialized_transports],
++                    &handles_[0][j][i * state->num_initialized_transports],
++                    *(dynamic_cast<nvshmemi_symmetric_heap *>(this)));
++                NVSHMEMI_NE_ERROR_JMP(status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
++                                      "release memory handles failed for remote on heap static\n");
++                status = remotetran.release_mem_handles(
++                    &handles_[1][j][i * state->num_initialized_transports],
+                     *(dynamic_cast<nvshmemi_symmetric_heap *>(this)));
+                 NVSHMEMI_NE_ERROR_JMP(status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
+                                       "release memory handles failed for remote on heap static\n");
+@@ -643,7 +655,7 @@ int nvshmemi_symmetric_heap_vidmem_static_pinned::map_heap_chunk(int pe_id, int
+     nvshmemi_state_t *state = get_state();
+     return ((empty_heap_handle_cache())
+                 ? import_memory(
+-                      &handles_.back()[pe_id * state->num_initialized_transports + transport_idx],
++                      &handles_[0].back()[pe_id * state->num_initialized_transports + transport_idx],
+                       (peer_heap_base_p2p_ + pe_id))
+                 : 0);
+ }
+@@ -671,22 +683,22 @@ int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::map_heap_chunk(int pe_id, int tr
+          buf, size, heap_base_, pe_id, peer_heap_base_p2p_[pe_id]);
+     buf_map = (void *)(buf - (char *)heap_base_ + (char *)(peer_heap_base_p2p_[pe_id]));
+     return (
+-        import_memory(&handles_.back()[pe_id * state->num_initialized_transports + transport_idx],
++        import_memory(&handles_[0].back()[pe_id * state->num_initialized_transports + transport_idx],
+                       &buf_map, size));
+ }
+ 
+ int nvshmemi_symmetric_heap_sysmem_static_shm::exchange_heap_memory_handle(
+-    nvshmem_mem_handle_t *local_handles) {
++    nvshmem_mem_handle_t *local_handles, nvshmem_mem_handle_t *local_handles_2) {
+     return 0;
+ }
+ 
+ int nvshmemi_symmetric_heap_vidmem_static_pinned::exchange_heap_memory_handle(
+-    nvshmem_mem_handle_t *local_handles) {
++    nvshmem_mem_handle_t *local_handles, nvshmem_mem_handle_t *local_handles_2) {
+     return 0;
+ }
+ 
+ int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::exchange_heap_memory_handle(
+-    nvshmem_mem_handle_t *local_handles) {
++    nvshmem_mem_handle_t *local_handles, nvshmem_mem_handle_t *local_handles_2) {
+     int status = 0;
+     ipcHandle *myIpcHandle = NULL;
+     nvshmemi_state_t *state = get_state();
+@@ -731,6 +743,8 @@ int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::exchange_heap_memory_handle(
+         if (pid != receiving_process) { /* Don't send to yourself */
+             NVSHMEMI_IPC_CHECK(
+                 ipcSendFd(myIpcHandle, *(int *)local_handles, pid, receiving_process));
++            NVSHMEMI_IPC_CHECK(
++                ipcSendFd(myIpcHandle, *(int *)local_handles_2, pid, receiving_process));
+         }
+     }
+ 
+@@ -741,7 +755,10 @@ int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::exchange_heap_memory_handle(
+         if (pid != sending_process) { /* Don't recv from  yourself */
+             NVSHMEMI_IPC_CHECK(ipcRecvFd(
+                 recvIpcHandles[sending_process],
+-                (int *)&handles_.back()[it1->second * state->num_initialized_transports]));
++                (int *)&handles_[0].back()[it1->second * state->num_initialized_transports]));
++            NVSHMEMI_IPC_CHECK(ipcRecvFd(
++                recvIpcHandles[sending_process],
++                (int *)&handles_[1].back()[it1->second * state->num_initialized_transports]));
+         }
+     }
+ 
+@@ -769,7 +786,7 @@ int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::exchange_heap_memory_handle(
+ 
+ int nvshmemi_symmetric_heap_sysmem_static_shm::register_heap_memory_handle(
+     nvshmem_mem_handle_t *local_handles, int transport_idx, nvshmem_mem_handle_t *in, void *buf,
+-    size_t size, nvshmem_transport_t current) {
++    size_t size, nvshmem_transport_t current, int index) {
+     nvshmemi_state_t *state = get_state();
+     nvshmemi_mem_remote_transport &remote_tran = *(get_remoteref());
+     // register and retrieve local handles, dynamically sized requesting buf, size range if RAIL OPT
+@@ -778,14 +795,14 @@ int nvshmemi_symmetric_heap_sysmem_static_shm::register_heap_memory_handle(
+     int status = 0;
+     if (nvshmemi_device_state.enable_rail_opt == 0) {
+         status =
+-            remote_tran.register_mem_handle(local_handles, transport_idx, in, buf, size, current);
++            remote_tran.register_mem_handle(local_handles, transport_idx, in, buf, size, current, index);
+     } else {
+         if (empty_heap_handle_cache()) {
+             status =
+                 remote_tran.register_mem_handle(local_handles, transport_idx, in, global_heap_base_,
+-                                                heap_size_ * state->npes_node, current);
++                                                heap_size_ * state->npes_node, current, index);
+         } else {
+-            local_handles[transport_idx] = handles_.front().data()[transport_idx];
++            local_handles[transport_idx] = handles_[index].front().data()[transport_idx];
+         }
+     }
+ 
+@@ -794,9 +811,9 @@ int nvshmemi_symmetric_heap_sysmem_static_shm::register_heap_memory_handle(
+ 
+ int nvshmemi_symmetric_heap_vidmem_static_pinned::register_heap_memory_handle(
+     nvshmem_mem_handle_t *local_handles, int transport_idx, nvshmem_mem_handle_t *in, void *buf,
+-    size_t size, nvshmem_transport_t current) {
++    size_t size, nvshmem_transport_t current, int index) {
+     nvshmemi_mem_remote_transport &remote_tran = *(get_remoteref());
+-    return remote_tran.register_mem_handle(local_handles, transport_idx, in, buf, size, current);
++    return remote_tran.register_mem_handle(local_handles, transport_idx, in, buf, size, current, index);
+ }
+ 
+ int nvshmemi_symmetric_heap_static::register_heap_chunk(nvshmem_mem_handle_t *mem_handle_in,
+@@ -804,13 +821,14 @@ int nvshmemi_symmetric_heap_static::register_heap_chunk(nvshmem_mem_handle_t *me
+     nvshmemi_state_t *state = get_state();
+     nvshmemi_mem_remote_transport &remotetran = *(get_remoteref());
+     nvshmem_transport_t *transports = (nvshmem_transport_t *)state->transports;
+-    nvshmem_mem_handle_t local_handles[state->num_initialized_transports];
++    nvshmem_mem_handle_t local_handles[2][state->num_initialized_transports];
+     nvshmem_mem_handle_t *map_handles = nullptr;
+     nvshmem_transport_t current;
+     int status = 0;
+ 
+     // assuming symmetry of transports across all PEs
+-    memset(local_handles, 0, sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports);
++    memset(local_handles[0], 0, sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports);
++    memset(local_handles[1], 0, sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports);
+     assert(buf != nullptr);
+     assert(size < NVSHMEMI_DMA_BUF_MAX_LENGTH);
+ 
+@@ -826,7 +844,10 @@ int nvshmemi_symmetric_heap_static::register_heap_chunk(nvshmem_mem_handle_t *me
+                          "size: %lu",
+                          state->mype, typeid(decltype(this)).name(), buf, size);
+ 
+-                    status = export_memory(local_handles + i, heap_base_, heap_size_);
++                    status = export_memory(local_handles[0] + i, heap_base_, heap_size_);
++                    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                                          "export memory failed for p2p on heap static \n");
++                    status = export_memory(local_handles[1] + i, heap_base_, heap_size_);
+                     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                           "export memory failed for p2p on heap static \n");
+                 } else {
+@@ -835,24 +856,34 @@ int nvshmemi_symmetric_heap_static::register_heap_chunk(nvshmem_mem_handle_t *me
+                          "size: %lu",
+                          state->mype, typeid(decltype(this)).name(), i, buf, size);
+ 
+-                    status = register_heap_memory_handle(&local_handles[0], static_cast<int>(i),
+-                                                         mem_handle_in, buf, size, current);
++                    status = register_heap_memory_handle(&local_handles[0][0], static_cast<int>(i),
++                                                         mem_handle_in, buf, size, current, 0);
++                    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                                          "register_heap_memory_handle failed for remote \n");
++                    status = register_heap_memory_handle(&local_handles[1][0], static_cast<int>(i),
++                                                         mem_handle_in, buf, size, current, 1);
+                     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                           "register_heap_memory_handle failed for remote \n");
+                 }
+             } else {
+                 // cached handles, if any so reuse
+                 if (NVSHMEMI_TRANSPORT_IS_CAP(current, state->mype, NVSHMEM_TRANSPORT_CAP_MAP)) {
+-                    map_handles = handles_.front().data();
+-                    local_handles[i] = map_handles[i];
++                    map_handles = handles_[0].front().data();
++                    local_handles[0][i] = map_handles[i];
++                    map_handles = handles_[1].front().data();
++                    local_handles[1][i] = map_handles[i];
+                 } else {
+                     INFO(NVSHMEM_MEM,
+                          "[%d] heap type: %s calling get_mem_handle for transport: %d buf: %p "
+                          "size: %lu",
+                          state->mype, typeid(decltype(this)).name(), i, buf, size);
+ 
+-                    status = register_heap_memory_handle(&local_handles[0], static_cast<int>(i),
+-                                                         mem_handle_in, buf, size, current);
++                    status = register_heap_memory_handle(&local_handles[0][0], static_cast<int>(i),
++                                                         mem_handle_in, buf, size, current, 0);
++                    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                                          "register_heap_memory_handle failed for remote \n");
++                    status = register_heap_memory_handle(&local_handles[1][0], static_cast<int>(i),
++                                                         mem_handle_in, buf, size, current, 1);
+                     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                           "register_heap_memory_handle failed for remote \n");
+                 }
+@@ -860,11 +891,20 @@ int nvshmemi_symmetric_heap_static::register_heap_chunk(nvshmem_mem_handle_t *me
+         })
+ 
+     // Allgather memory handle for all PEs in the team
+-    handles_.push_back(
++    handles_[0].push_back(
++        std::vector<nvshmem_mem_handle_t>(state->num_initialized_transports * state->npes));
++    handles_[1].push_back(
+         std::vector<nvshmem_mem_handle_t>(state->num_initialized_transports * state->npes));
+ 
+     status = nvshmemi_boot_handle.allgather(
+-        (void *)local_handles, (void *)(handles_.back().data()),
++        (void *)local_handles[0], (void *)(handles_[0].back().data()),
++        (sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports), &nvshmemi_boot_handle);
++
++    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                          "allgather of mem handles failed \n");
++
++    status = nvshmemi_boot_handle.allgather(
++        (void *)local_handles[1], (void *)(handles_[1].back().data()),
+         (sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports), &nvshmemi_boot_handle);
+ 
+     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+@@ -896,13 +936,14 @@ int nvshmemi_symmetric_heap_dynamic::register_heap_chunk(nvshmem_mem_handle_t *m
+                                                          void *buf, size_t size) {
+     nvshmemi_state_t *state = get_state();
+     nvshmem_transport_t *transports = (nvshmem_transport_t *)state->transports;
+-    nvshmem_mem_handle_t local_handles[state->num_initialized_transports];
++    nvshmem_mem_handle_t local_handles[2][state->num_initialized_transports];
+     nvshmemi_mem_remote_transport &remotetran = *(get_remoteref());
+     nvshmem_transport_t current;
+     int status = 0;
+ 
+     // assuming symmetry of transports across all PEs
+-    memset(local_handles, 0, sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports);
++    memset(local_handles[0], 0, sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports);
++    memset(local_handles[1], 0, sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports);
+     assert(buf != nullptr);
+     assert(size < NVSHMEMI_DMA_BUF_MAX_LENGTH);
+ 
+@@ -915,7 +956,12 @@ int nvshmemi_symmetric_heap_dynamic::register_heap_chunk(nvshmem_mem_handle_t *m
+                      state->mype, typeid(decltype(this)).name(), buf, size);
+ 
+                 status =
+-                    export_memory((nvshmem_mem_handle_t *)(local_handles + idx), mem_handle_in);
++                    export_memory((nvshmem_mem_handle_t *)(local_handles[0] + idx), mem_handle_in);
++                NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                                      "export_memory failed for p2p on heap dynamic \n");
++
++                status =
++                    export_memory((nvshmem_mem_handle_t *)(local_handles[1] + idx), mem_handle_in);
+                 NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                       "export_memory failed for p2p on heap dynamic \n");
+             } else {
+@@ -923,19 +969,30 @@ int nvshmemi_symmetric_heap_dynamic::register_heap_chunk(nvshmem_mem_handle_t *m
+                     NVSHMEM_MEM,
+                     "[%d] heap type: %s calling get_mem_handle for transport: %d buf: %p size: %lu",
+                     state->mype, typeid(decltype(this)).name(), idx, buf, size);
+-                status = remotetran.register_mem_handle(&local_handles[0], idx, mem_handle_in, buf,
+-                                                        size, current);
++                status = remotetran.register_mem_handle(&local_handles[0][0], idx, mem_handle_in, buf,
++                                                        size, current, 0);
++                NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                                      "register_mem_handle failed for remote \n");
++                status = remotetran.register_mem_handle(&local_handles[1][0], idx, mem_handle_in, buf,
++                                                        size, current, 1);
+                 NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                       "register_mem_handle failed for remote \n");
+             }
+         })
+ 
+     // Allgather memory handle for remote connected PEs
+-    handles_.push_back(
++    handles_[0].push_back(
++        std::vector<nvshmem_mem_handle_t>(state->num_initialized_transports * state->npes));
++    handles_[1].push_back(
+         std::vector<nvshmem_mem_handle_t>(state->num_initialized_transports * state->npes));
+ 
+     status = nvshmemi_boot_handle.allgather(
+-        (void *)local_handles, (void *)(handles_.back().data()),
++        (void *)local_handles[0], (void *)(handles_[0].back().data()),
++        sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports, &nvshmemi_boot_handle);
++    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                          "allgather of mem handles failed \n");
++    status = nvshmemi_boot_handle.allgather(
++        (void *)local_handles[1], (void *)(handles_[1].back().data()),
+         sizeof(nvshmem_mem_handle_t) * state->num_initialized_transports, &nvshmemi_boot_handle);
+     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                           "allgather of mem handles failed \n");
+@@ -946,7 +1003,7 @@ int nvshmemi_symmetric_heap_dynamic::register_heap_chunk(nvshmem_mem_handle_t *m
+                           "allgather of mem handles failed for remotetransport\n");
+ 
+     // Exchange send/recv memory handles for p2p connected PEs
+-    exchange_heap_memory_handle(&local_handles[0]);
++    exchange_heap_memory_handle(&local_handles[0][0], &local_handles[1][0]);
+     heap_mspace_->add_new_chunk((char *)heap_base_ + physical_heap_size_, size);
+ 
+     // Memory map the handles for all capability mapped transports
+diff --git a/src/host/mem/mem_transport.cpp b/src/host/mem/mem_transport.cpp
+index e1a1126..ddc171e 100644
+--- a/src/host/mem/mem_transport.cpp
++++ b/src/host/mem/mem_transport.cpp
+@@ -40,7 +40,7 @@ void nvshmemi_mem_p2p_transport::print_mem_handle(int pe_id, int transport_idx,
+     int i = pe_id;
+     int j = transport_idx;
+     nvshmemi_state_t *state = obj.get_state();
+-    char *hex = nvshmemu_hexdump(&obj.handles_.back()[i * state->num_initialized_transports + j],
++    char *hex = nvshmemu_hexdump(&obj.handles_[0].back()[i * state->num_initialized_transports + j],
+                                  sizeof(CUipcMemHandle));
+     INFO(NVSHMEM_INIT, "[%d] cuIpcOpenMemHandle fromhandle 0x%s", state->mype, hex);
+     NVSHMEMU_HOST_PTR_FREE(hex);
+@@ -284,7 +284,7 @@ int nvshmemi_mem_remote_transport::gather_mem_handles(nvshmemi_symmetric_heap &o
+         if (NVSHMEMU_IS_BIT_SET(obj.get_state()->transport_bitmap, i) &&
+             NVSHMEMI_TRANSPORT_OPS_IS_ADD_DEVICE_REMOTE_MEM(tcurr)) {
+             status = tcurr->host_ops.add_device_remote_mem_handles(
+-                tcurr, obj.get_state()->num_initialized_transports, obj.handles_.back().data(),
++                tcurr, obj.get_state()->num_initialized_transports, obj.handles_[0].back().data(),
+                 heap_offset, size);
+             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                   "add_device_remote_mem_handles failed \n");
+@@ -301,10 +301,10 @@ out:
+ int nvshmemi_mem_remote_transport::register_mem_handle(nvshmem_mem_handle_t *local_handles,
+                                                        int transport_idx, nvshmem_mem_handle_t *in,
+                                                        void *buf, size_t size,
+-                                                       nvshmem_transport_t current) {
++                                                       nvshmem_transport_t current, int index) {
+     if (!NVSHMEMI_TRANSPORT_OPS_IS_GET_MEM(current)) return 0;
+     return current->host_ops.get_mem_handle((nvshmem_mem_handle_t *)(local_handles + transport_idx),
+-                                            in, buf, size, current, false);
++                                            in, buf, size, current, false, index);
+ }
+ 
+ int nvshmemi_mem_remote_transport::release_mem_handles(nvshmem_mem_handle_t *handles,
+diff --git a/src/host/proxy/proxy.cpp b/src/host/proxy/proxy.cpp
+index 3890bea..91919c8 100644
+--- a/src/host/proxy/proxy.cpp
++++ b/src/host/proxy/proxy.cpp
+@@ -420,6 +420,7 @@ inline int process_channel_dma(proxy_state_t *state, proxy_channel_t *ch, int *i
+                        ((uint64_t)(dma_req_0->laddr_2) << 8) | dma_req_1->laddr_low);
+     size = (size_t)(((size_t)(dma_req_1->size_high) << 16) | (dma_req_1->size_low));
+     pe = dma_req_2->pe;
++    int channelId = dma_req_2->channelId;
+     TRACE(NVSHMEM_PROXY, "process_channel_dma laddr %p pe %d", laddr, pe);
+ 
+     // issue transport DMA
+@@ -431,7 +432,7 @@ inline int process_channel_dma(proxy_state_t *state, proxy_channel_t *ch, int *i
+         verb.cstrm = NULL;
+         void *rptr = (void *)((char *)(nvshmemi_device_state.heap_base) + roffset);
+         nvshmemi_process_multisend_rma(state->transport[pe], state->transport_id[pe], pe, verb,
+-                                       rptr, (void *)laddr, size, 1);
++                                       rptr, (void *)laddr, size, 1, channelId);
+     }
+ #if defined(NVSHMEM_PPC64LE) || defined(NVSHMEM_AARCH64)
+     __sync_synchronize();  // XXX: prevents complete_d store reordered to before return from
+@@ -503,14 +504,16 @@ inline int process_channel_inline(proxy_state_t *state, proxy_channel_t *ch, int
+         verb.is_nbi = 0;
+ 
+         localdesc.ptr = local;
+-        localdesc.handle = NULL;
++        localdesc.handle[0] = NULL;
++        localdesc.handle[1] = NULL;
+         remotedesc.ptr = remote_actual;
+-        nvshmemi_get_remote_mem_handle(&remotedesc, NULL, remote, pe, t);
++        nvshmemi_get_remote_mem_handle(&remotedesc, NULL, remote, pe, t, 0);
++        nvshmemi_get_remote_mem_handle(&remotedesc, NULL, remote, pe, t, 1);
+ 
+         bytes.nelems = 1;
+         bytes.elembytes = size;
+ 
+-        status = tcurr->host_ops.rma(tcurr, pe, verb, &remotedesc, &localdesc, bytes, 1);
++        status = tcurr->host_ops.rma(tcurr, pe, verb, &remotedesc, &localdesc, bytes, 1, 0);
+         if (unlikely(status)) {
+             NVSHMEMI_ERROR_PRINT("aborting due to error in process_channel_dma\n");
+             exit(-1);
+@@ -564,6 +567,12 @@ int process_channel_amo(proxy_state_t *state, proxy_channel_t *ch, int *is_proce
+     while (*((volatile uint8_t *)&req_3->flag) != flag)
+         ;
+ 
++    amo_request_4_t *req_4;
++    req_4 = (amo_request_4_t *)WRAPPED_CHANNEL_BUF(state, ch, (ch->processed + 40));
++    flag = COUNTER_TO_FLAG(state, (ch->processed + 40));
++    while (*((volatile uint8_t *)&req_4->flag) != flag)
++        ;
++
+ #if defined(NVSHMEM_PPC64LE) || defined(NVSHMEM_AARCH64)
+     __sync_synchronize();  // XXX : prevents load from buf_d reordered to before load from issue_d
+                            // (was present in dma function, was missing in inline function, breaks
+@@ -576,6 +585,7 @@ int process_channel_amo(proxy_state_t *state, proxy_channel_t *ch, int *is_proce
+     uint64_t size = req_1->size;
+     nvshmemi_amo_t amo_op = (nvshmemi_amo_t)req_0->amo;
+     uint64_t lvalue, cvalue = 0;
++    int channelId = req_4->channelId;
+ 
+     lvalue = req_0->swap_add_low;
+     lvalue = lvalue | ((uint64_t)req_1->swap_add_high << 32);
+@@ -604,7 +614,8 @@ int process_channel_amo(proxy_state_t *state, proxy_channel_t *ch, int *is_proce
+         memdesc.remote_memdesc.offset = roffset;
+         memdesc.val = lvalue;
+         memdesc.cmp = cvalue;
+-        nvshmemi_get_remote_mem_handle(&memdesc.remote_memdesc, NULL, remote, pe, t);
++        nvshmemi_get_remote_mem_handle(&memdesc.remote_memdesc, NULL, remote, pe, t, 0);
++        nvshmemi_get_remote_mem_handle(&memdesc.remote_memdesc, NULL, remote, pe, t, 1);
+         // pick spot in g buffer for fetch value
+         if ((amo_op > NVSHMEMI_AMO_END_OF_NONFETCH)) {
+             uint64_t g_buf_counter = ((*reinterpret_cast<uint64_t *>(req_3)) & 0xFFFFFFFFFFFFFF00u);
+@@ -613,11 +624,12 @@ int process_channel_amo(proxy_state_t *state, proxy_channel_t *ch, int *is_proce
+             memdesc.retptr = (void *)(proxy_channel_g_buf + offset);
+             memdesc.retflag =
+                 ((g_buf_counter * sizeof(g_elem_t)) >> proxy_channel_g_buf_log_size) * 2 + 1;
+-            nvshmemi_get_local_mem_handle(&memdesc.ret_handle, NULL, memdesc.retptr, t);
++            nvshmemi_get_local_mem_handle(&memdesc.ret_handle[0], NULL, memdesc.retptr, t, 0);
++            nvshmemi_get_local_mem_handle(&memdesc.ret_handle[1], NULL, memdesc.retptr, t, 1);
+         }
+         bytes.elembytes = size;
+ 
+-        status = tcurr->host_ops.amo(tcurr, pe, NULL, verb, &memdesc, bytes, 1);
++        status = tcurr->host_ops.amo(tcurr, pe, NULL, verb, &memdesc, bytes, 1, channelId);
+         if (unlikely(status)) {
+             NVSHMEMI_ERROR_PRINT("aborting due to error in process_channel_dma\n");
+             exit(-1);
+diff --git a/src/host/topo/topo.cpp b/src/host/topo/topo.cpp
+index e5ff301..6bf40b5 100644
+--- a/src/host/topo/topo.cpp
++++ b/src/host/topo/topo.cpp
+@@ -136,7 +136,7 @@ typedef struct nvshmemi_path_pair_info {
+ } nvshmemi_path_pair_info_t;
+ 
+ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
+-                                     struct nvshmem_transport *tcurr) {
++                                     struct nvshmem_transport *tcurr, int& gpu_dev_id) {
+     struct dev_info {
+         char *dev_path;
+         int use_count;
+@@ -176,6 +176,7 @@ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
+         status = NVSHMEMX_ERROR_INTERNAL;
+         goto out;
+     }
++    gpu_dev_id = (int)gpu_device_id;
+ 
+     /* Allocate data structures start */
+     /* Array of dev_info structures of size # of local NICs */
+diff --git a/src/host/topo/topo.h b/src/host/topo/topo.h
+index 50d0a1e..4a4cb03 100644
+--- a/src/host/topo/topo.h
++++ b/src/host/topo/topo.h
+@@ -9,7 +9,7 @@
+ #include "internal/host/nvshmemi_types.h"  // for nvshmemi_state_t
+ 
+ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
+-                                     struct nvshmem_transport *tcurr);
++                                     struct nvshmem_transport *tcurr, int& gpu_dev_id);
+ int nvshmemi_detect_same_device(nvshmemi_state_t *state);
+ int nvshmemi_build_transport_map(nvshmemi_state_t *state);
+ 
+diff --git a/src/host/transport/transport.cpp b/src/host/transport/transport.cpp
+index bf4b1f1..841d957 100644
+--- a/src/host/transport/transport.cpp
++++ b/src/host/transport/transport.cpp
+@@ -377,7 +377,8 @@ int nvshmemi_setup_connections(nvshmemi_state_t *state) {
+                  selected_devices[0]);
+             found_devices++;
+         } else {
+-            nvshmemi_get_devices_by_distance(selected_devices, max_devices_per_pe, tcurr);
++            int gpu_dev_id = -1;
++            nvshmemi_get_devices_by_distance(selected_devices, max_devices_per_pe, tcurr, gpu_dev_id);
+             for (int i = 0; i < max_devices_per_pe; i++) {
+                 if (selected_devices[i] == -1) {
+                     break;
+@@ -387,6 +388,19 @@ int nvshmemi_setup_connections(nvshmemi_state_t *state) {
+                      "NVSHMEM_ENABLE_NIC_PE_MAPPING = 0, device %d setting dev_id = %d", i,
+                      selected_devices[i]);
+             }
++
++            if ((gpu_dev_id % 2 == 1) && (found_devices == 4)) {
++                int left = 0;
++                int right = 3;
++                while (left < right) {
++                    int temp = selected_devices[left];
++                    selected_devices[left] = selected_devices[right];
++                    selected_devices[right] = temp;
++                    left++;
++                    right--;
++                }
++            }
++
+         }
+ 
+         /* setting n_devices to 0 is the transports way of
+diff --git a/src/include/device/nvshmem_defines.h b/src/include/device/nvshmem_defines.h
+index 03561bf..ecf5314 100644
+--- a/src/include/device/nvshmem_defines.h
++++ b/src/include/device/nvshmem_defines.h
+@@ -224,7 +224,7 @@ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_getmem(void *d
+ #define NVSHMEMI_TYPENAME_PUT_NBI_IMPL(TYPENAME, TYPE)                                             \
+     NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_##TYPENAME##_put_nbi(        \
+         TYPE *dest, const TYPE *source, size_t nelems, int pe) {                                   \
+-        nvshmemi_put_nbi_threadgroup<TYPE, NVSHMEMI_THREADGROUP_THREAD>(dest, source, nelems, pe); \
++        nvshmemi_put_nbi_threadgroup<TYPE, NVSHMEMI_THREADGROUP_THREAD>(dest, source, nelems, pe, 0); \
+     }
+ NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES(NVSHMEMI_TYPENAME_PUT_NBI_IMPL)
+ #undef NVSHMEMI_TYPENAME_PUT_NBI_IMPL
+@@ -254,32 +254,32 @@ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_put8_nbi(void
+                                                                            const void *source,
+                                                                            size_t nelems, int pe) {
+     nvshmemi_put_nbi_threadgroup<int8_t, NVSHMEMI_THREADGROUP_THREAD>(
+-        (int8_t *)dest, (const int8_t *)source, nelems, pe);
++        (int8_t *)dest, (const int8_t *)source, nelems, pe, 0);
+ }
+ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_put16_nbi(void *dest,
+                                                                             const void *source,
+                                                                             size_t nelems, int pe) {
+     nvshmemi_put_nbi_threadgroup<int16_t, NVSHMEMI_THREADGROUP_THREAD>(
+-        (int16_t *)dest, (const int16_t *)source, nelems, pe);
++        (int16_t *)dest, (const int16_t *)source, nelems, pe, 0);
+ }
+ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_put32_nbi(void *dest,
+                                                                             const void *source,
+                                                                             size_t nelems, int pe) {
+     nvshmemi_put_nbi_threadgroup<int32_t, NVSHMEMI_THREADGROUP_THREAD>(
+-        (int32_t *)dest, (const int32_t *)source, nelems, pe);
++        (int32_t *)dest, (const int32_t *)source, nelems, pe, 0);
+ }
+ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_put64_nbi(void *dest,
+                                                                             const void *source,
+                                                                             size_t nelems, int pe) {
+     nvshmemi_put_nbi_threadgroup<int64_t, NVSHMEMI_THREADGROUP_THREAD>(
+-        (int64_t *)dest, (const int64_t *)source, nelems, pe);
++        (int64_t *)dest, (const int64_t *)source, nelems, pe, 0);
+ }
+ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_put128_nbi(void *dest,
+                                                                              const void *source,
+                                                                              size_t nelems,
+                                                                              int pe) {
+     nvshmemi_put_nbi_threadgroup<int4, NVSHMEMI_THREADGROUP_THREAD>(
+-        (int4 *)dest, (const int4 *)source, nelems, pe);
++        (int4 *)dest, (const int4 *)source, nelems, pe, 0);
+ }
+ /*__device__ nvshmem_get<bits>_nbi*/
+ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_get8_nbi(void *dest,
+@@ -318,7 +318,7 @@ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmem_putmem_nbi(voi
+                                                                              const void *source,
+                                                                              size_t bytes, int pe) {
+     nvshmemi_put_nbi_threadgroup<char, NVSHMEMI_THREADGROUP_THREAD>(
+-        (char *)dest, (const char *)source, bytes, pe);
++        (char *)dest, (const char *)source, bytes, pe, 0);
+ }
+ 
+ /*__device__ nvshmem_putmem_signal_nbi*/
+@@ -797,7 +797,7 @@ NVSHMEM_TYPE_ATOMIC_FETCH_ADD_CAST(size, size_t, unsigned long long int)
+         if (nvshmemi_device_state_d.job_connectivity <= NVSHMEMI_JOB_GPU_LDST_ATOMICS) {   \
+             nvshmem_##Name##_atomic_fetch_add(target, value, pe);                          \
+         } else {                                                                           \
+-            nvshmemi_transfer_amo_nonfetch<Type>(target, value, pe, NVSHMEMI_AMO_ADD);     \
++            nvshmemi_transfer_amo_nonfetch<Type>(target, value, pe, NVSHMEMI_AMO_ADD, 0);  \
+         }                                                                                  \
+     }
+ 
+@@ -884,7 +884,7 @@ NVSHMEM_TYPE_ATOMIC_FETCH_INC_EMULATE(size, size_t)
+         if (nvshmemi_device_state_d.job_connectivity <= NVSHMEMI_JOB_GPU_LDST_ATOMICS) {         \
+             nvshmem_##Name##_atomic_fetch_inc(target, pe);                                       \
+         } else {                                                                                 \
+-            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, (Type)1, pe, NVSHMEMI_AMO_ADD); \
++            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, (Type)1, pe, NVSHMEMI_AMO_ADD, 0); \
+         }                                                                                        \
+     }
+ 
+@@ -1000,7 +1000,7 @@ NVSHMEM_TYPE_FETCH_AND_CAST(uint64, uint64_t, unsigned long long int)
+         if (nvshmemi_device_state_d.job_connectivity <= NVSHMEMI_JOB_GPU_LDST_ATOMICS) {       \
+             nvshmem_##Name##_atomic_fetch_and(target, (Type)value, pe);                        \
+         } else {                                                                               \
+-            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, value, pe, NVSHMEMI_AMO_AND); \
++            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, value, pe, NVSHMEMI_AMO_AND, 0); \
+         }                                                                                      \
+     }
+ 
+@@ -1060,7 +1060,7 @@ NVSHMEM_TYPE_FETCH_OR_CAST(uint64, uint64_t, unsigned long long int)
+         if (nvshmemi_device_state_d.job_connectivity <= NVSHMEMI_JOB_GPU_LDST_ATOMICS) {      \
+             nvshmem_##Name##_atomic_fetch_or(target, (Type)value, pe);                        \
+         } else {                                                                              \
+-            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, value, pe, NVSHMEMI_AMO_OR); \
++            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, value, pe, NVSHMEMI_AMO_OR, 0); \
+         }                                                                                     \
+     }
+ 
+@@ -1120,7 +1120,7 @@ NVSHMEM_TYPE_FETCH_XOR_CAST(uint64, uint64_t, unsigned long long int)
+         if (nvshmemi_device_state_d.job_connectivity <= NVSHMEMI_JOB_GPU_LDST_ATOMICS) {       \
+             nvshmem_##Name##_atomic_fetch_xor(target, (Type)value, pe);                        \
+         } else {                                                                               \
+-            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, value, pe, NVSHMEMI_AMO_XOR); \
++            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, value, pe, NVSHMEMI_AMO_XOR, 0); \
+         }                                                                                      \
+     }
+ 
+@@ -1216,7 +1216,7 @@ NVSHMEM_TYPE_FETCH_EMULATE_CAST(ptrdiff, ptrdiff_t, ulonglong, unsigned long lon
+         if (nvshmemi_device_state_d.job_connectivity <= NVSHMEMI_JOB_GPU_LDST_ATOMICS) {       \
+             nvshmem_##Name##_atomic_swap(target, value, pe);                                   \
+         } else {                                                                               \
+-            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, value, pe, NVSHMEMI_AMO_SET); \
++            nvshmemi_transfer_amo_nonfetch<Type>((void *)target, value, pe, NVSHMEMI_AMO_SET, 0); \
+         }                                                                                      \
+     }
+ 
+diff --git a/src/include/device/nvshmemx_defines.h b/src/include/device/nvshmemx_defines.h
+index 2f49f05..2756c9a 100644
+--- a/src/include/device/nvshmemx_defines.h
++++ b/src/include/device/nvshmemx_defines.h
+@@ -34,8 +34,8 @@ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemx_vendor_get_ve
+ 
+ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemx_signal_op(uint64_t *sig_addr,
+                                                                              uint64_t signal,
+-                                                                             int sig_op, int pe) {
+-    nvshmemi_signal_op(sig_addr, signal, sig_op, pe);
++                                                                             int sig_op, int pe, int channelId) {
++    nvshmemi_signal_op(sig_addr, signal, sig_op, pe, channelId);
+ }
+ 
+ NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void *nvshmemx_mc_ptr(nvshmem_team_t team,
+@@ -69,7 +69,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_signal(T *dest, const T v
+                            ((char *)dest - (char *)(nvshmemi_device_state_d.heap_base)));
+         *dest_actual = value;
+     } else {
+-        nvshmemi_transfer_amo_nonfetch<T>((void *)dest, value, pe, NVSHMEMI_AMO_SIGNAL);
++        nvshmemi_transfer_amo_nonfetch<T>((void *)dest, value, pe, NVSHMEMI_AMO_SIGNAL, 0);
+     }
+ }
+ 
+@@ -84,7 +84,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_signal(T *dest, const T v
+             nvshmemx_##TYPENAME##_put##SC_SUFFIX(dest, source, nelems, pe);                    \
+             if (myIdx == 0) {                                                                  \
+                 __threadfence_system();                                                        \
+-                nvshmemx_signal_op(sig_addr, signal, sig_op, pe);                              \
++                nvshmemx_signal_op(sig_addr, signal, sig_op, pe, 0);                              \
+             }                                                                                  \
+             NVSHMEMI_SYNC##SC_SUFFIX();                                                        \
+         } else {                                                                               \
+@@ -255,9 +255,9 @@ DEFINE_NVSHMEM_GETMEM_THREADGROUP(block)
+ 
+ #define NVSHMEM_TYPE_PUT_NBI_THREADGROUP(Name, Type, Group)                                      \
+     NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemx_##Name##_put_nbi_##Group( \
+-        Type *dest, const Type *source, size_t nelems, int pe) {                                 \
++        Type *dest, const Type *source, size_t nelems, int pe, int channelId) {                  \
+         nvshmemi_put_nbi_threadgroup<Type, nvshmemi_threadgroup_##Group>(dest, source, nelems,   \
+-                                                                         pe);                    \
++                                                                         pe, channelId);         \
+     }
+ 
+ #define DEFINE_NVSHMEM_TYPE_PUT_NBI_THREADGROUP(Name, Type) \
+@@ -285,7 +285,7 @@ NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES(DEFINE_NVSHMEM_TYPE_GET_NBI_THREADGROUP)
+     NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemx_put##Name##_nbi_##Group( \
+         void *dest, const void *source, size_t nelems, int pe) {                                \
+         nvshmemi_put_nbi_threadgroup<Type, nvshmemi_threadgroup_##Group>(                       \
+-            (Type *)dest, (const Type *)source, nelems, pe);                                    \
++            (Type *)dest, (const Type *)source, nelems, pe, 0);                                 \
+     }
+ 
+ #define DEFINE_NVSHMEM_PUTSIZE_NBI_THREADGROUP(Name, Type) \
+@@ -313,7 +313,7 @@ NVSHMEMI_REPT_FOR_SIZES_WITH_TYPE(DEFINE_NVSHMEM_GETSIZE_NBI_THREADGROUP)
+     NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemx_putmem_nbi_##Group( \
+         void *dest, const void *source, size_t bytes, int pe) {                            \
+         nvshmemi_put_nbi_threadgroup<char, nvshmemi_threadgroup_##Group>(                  \
+-            (char *)dest, (const char *)source, bytes, pe);                                \
++            (char *)dest, (const char *)source, bytes, pe, 0);                             \
+     }
+ 
+ DEFINE_NVSHMEM_PUTMEM_NBI_THREADGROUP(warp)
+diff --git a/src/include/device_host/nvshmem_proxy_channel.h b/src/include/device_host/nvshmem_proxy_channel.h
+index 001d031..b64181d 100644
+--- a/src/include/device_host/nvshmem_proxy_channel.h
++++ b/src/include/device_host/nvshmem_proxy_channel.h
+@@ -62,7 +62,7 @@ typedef struct __attribute__((packed)) put_dma_request_2 {
+     volatile uint8_t flag;
+     uint8_t resv;
+     uint16_t pe;
+-    uint32_t resv1;
++    uint32_t channelId;
+ } put_dma_request_2_t;
+ static_assert(sizeof(put_dma_request_2) == 8, "request_size must be 8 bytes.");
+ 
+@@ -125,4 +125,12 @@ typedef struct __attribute__((packed)) amo_request_3 {
+ } amo_request_3_t;
+ static_assert(sizeof(amo_request_3) == 8, "request_size must be 8 bytes.");
+ 
++typedef struct __attribute__((packed)) amo_request_4 {
++    volatile uint8_t flag;
++    uint8_t resv;
++    uint16_t resv1;
++    uint32_t channelId;
++} amo_request_4_t;
++static_assert(sizeof(amo_request_4) == 8, "request_size must be 8 bytes.");
++
+ #endif
+diff --git a/src/include/device_host_transport/nvshmem_common_ibgda.h b/src/include/device_host_transport/nvshmem_common_ibgda.h
+index 8b8a263..b42ac84 100644
+--- a/src/include/device_host_transport/nvshmem_common_ibgda.h
++++ b/src/include/device_host_transport/nvshmem_common_ibgda.h
+@@ -46,6 +46,8 @@
+         qp_man.tx_wq.cons_idx = NVSHMEMI_IBGDA_ULSCALAR_INVALID;                    \
+         qp_man.tx_wq.get_head = NVSHMEMI_IBGDA_ULSCALAR_INVALID;                    \
+         qp_man.tx_wq.get_tail = NVSHMEMI_IBGDA_ULSCALAR_INVALID;                    \
++        qp_man.rx_wq.resv_head = NVSHMEMI_IBGDA_ULSCALAR_INVALID;                    \
++        qp_man.rx_wq.cons_idx = NVSHMEMI_IBGDA_ULSCALAR_INVALID;                    \
+         qp_man.ibuf.head = NVSHMEMI_IBGDA_ULSCALAR_INVALID;                         \
+         qp_man.ibuf.tail = NVSHMEMI_IBGDA_ULSCALAR_INVALID;                         \
+     } while (0);
+@@ -168,14 +170,18 @@ typedef struct {
+         uint64_t get_head;    // last wqe idx + 1 with a "fetch" operation (g, get, amo_fetch)
+         uint64_t get_tail;    // last wqe idx + 1 polled with cst; get_tail > get_head is possible
+     } tx_wq;
++    struct {
++        uint64_t resv_head;   // last reserved wqe idx + 1
++        uint64_t cons_idx;    // polled wqe idx + 1 (consumer index + 1)
++    } rx_wq;
+     struct {
+         uint64_t head;
+         uint64_t tail;
+     } ibuf;
+     char padding[NVSHMEMI_IBGDA_QP_MANAGEMENT_PADDING];
+ } __attribute__((__aligned__(8))) nvshmemi_ibgda_device_qp_management_v1;
+-static_assert(sizeof(nvshmemi_ibgda_device_qp_management_v1) == 96,
+-              "ibgda_device_qp_management_v1 must be 96 bytes.");
++static_assert(sizeof(nvshmemi_ibgda_device_qp_management_v1) == 112,
++              "ibgda_device_qp_management_v1 must be 112 bytes.");
+ 
+ typedef nvshmemi_ibgda_device_qp_management_v1 nvshmemi_ibgda_device_qp_management_t;
+ 
+@@ -199,9 +205,19 @@ typedef struct nvshmemi_ibgda_device_qp {
+         // May point to mvars.prod_idx or internal prod_idx
+         uint64_t *prod_idx;
+     } tx_wq;
++    struct {
++        uint16_t nwqes;
++        uint64_t tail;
++        void *wqe;
++        __be32 *dbrec;
++        void *bf;
++        nvshmemi_ibgda_device_cq_t *cq;
++        // May point to mvars.prod_idx or internal prod_idx
++        uint64_t *prod_idx;
++    } rx_wq;
+     nvshmemi_ibgda_device_qp_management_v1 mvars;  // management variables
+ } nvshmemi_ibgda_device_qp_v1;
+-static_assert(sizeof(nvshmemi_ibgda_device_qp_v1) == 184, "ibgda_device_qp_v1 must be 184 bytes.");
++static_assert(sizeof(nvshmemi_ibgda_device_qp_v1) == 256, "ibgda_device_qp_v1 must be 248 bytes.");
+ 
+ typedef nvshmemi_ibgda_device_qp_v1 nvshmemi_ibgda_device_qp_t;
+ 
+diff --git a/src/include/device_host_transport/nvshmem_constants.h b/src/include/device_host_transport/nvshmem_constants.h
+index cd3b2b0..72cb67c 100644
+--- a/src/include/device_host_transport/nvshmem_constants.h
++++ b/src/include/device_host_transport/nvshmem_constants.h
+@@ -70,7 +70,7 @@ enum {
+ };
+ 
+ #define PROXY_DMA_REQ_BYTES 32
+-#define PROXY_AMO_REQ_BYTES 40
++#define PROXY_AMO_REQ_BYTES 48
+ #define PROXY_INLINE_REQ_BYTES 24
+ 
+ enum {
+diff --git a/src/include/host/nvshmemx_api.h b/src/include/host/nvshmemx_api.h
+index 2661de4..d9d2b53 100644
+--- a/src/include/host/nvshmemx_api.h
++++ b/src/include/host/nvshmemx_api.h
+@@ -362,9 +362,9 @@ NVSHMEMI_REPT_FOR_SIZES(NVSHMEMX_DECL_SIZE_IPUT_THREADGROUP)
+ 
+ #define NVSHMEMX_DECL_TYPE_PUT_NBI_THREADGROUP(NAME, TYPE)                                         \
+     __device__ void nvshmemx_##NAME##_put_nbi_warp(TYPE *dest, const TYPE *source, size_t nelems,  \
+-                                                   int pe);                                        \
++                                                   int pe, int channel_id);                        \
+     __device__ void nvshmemx_##NAME##_put_nbi_block(TYPE *dest, const TYPE *source, size_t nelems, \
+-                                                    int pe);
++                                                    int pe, int channel_id);
+ 
+ NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES(NVSHMEMX_DECL_TYPE_PUT_NBI_THREADGROUP)
+ #undef NVSHMEMX_DECL_TYPE_PUT_NBI_THREADGROUP
+@@ -445,7 +445,7 @@ __device__ void nvshmemx_getmem_nbi_block(void *dest, const void *source, size_t
+ //////////////////// Signal ////////////////////
+ 
+ NVSHMEMI_HOSTDEVICE_PREFIX void nvshmemx_signal_op(uint64_t *sig_addr, uint64_t signal, int sig_op,
+-                                                   int pe);
++                                                   int pe, int channelId);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/include/internal/host/nvshmem_internal.h b/src/include/internal/host/nvshmem_internal.h
+index bb7fca2..056006c 100644
+--- a/src/include/internal/host/nvshmem_internal.h
++++ b/src/include/internal/host/nvshmem_internal.h
+@@ -114,7 +114,7 @@ int nvshmemi_setup_mops_kernels(nvshmemi_state_t *state);
+ void nvshmemi_signal_op_on_stream(uint64_t *sig_addr, uint64_t signal, int sig_op, int pe,
+                                   cudaStream_t cstrm);
+ extern "C" {
+-__device__ void nvshmemi_signal_op(uint64_t *sig_addr, uint64_t signal, int sig_op, int pe);
++__device__ void nvshmemi_signal_op(uint64_t *sig_addr, uint64_t signal, int sig_op, int pe, int channelId);
+ void nvshmemi_get_mem_handle(void **dev_state_ptr, void **transport_dev_state_ptr);
+ }
+ 
+@@ -126,12 +126,12 @@ struct nvshmem_mem_handle *nvshmemi_get_registered_buffer_handle(nvshmem_transpo
+                                                                  void *addr, size_t *len);
+ 
+ static inline void nvshmemi_get_local_mem_handle(nvshmem_mem_handle_t **handle, size_t *len,
+-                                                 void *addr, int transport_idx) {
++                                                 void *addr, int transport_idx, int index) {
+     nvshmem_transport_t transport = nvshmemi_state->transports[transport_idx];
+     size_t max_len = transport->max_op_len;
+ 
+     *handle = nvshmemi_state->heap_obj->get_transport_mem_handle(addr, len, nvshmemi_state->mype,
+-                                                                 transport_idx);
++                                                                 transport_idx, index);
+     if (*handle == NULL) {
+         /* registered buffer lookup code */
+         *handle = nvshmemi_get_registered_buffer_handle(transport, addr, len);
+@@ -146,12 +146,12 @@ static inline void nvshmemi_get_local_mem_handle(nvshmem_mem_handle_t **handle,
+ }
+ 
+ static inline void nvshmemi_get_remote_mem_handle(rma_memdesc_t *handle, size_t *len, void *addr,
+-                                                  int pe, int transport_idx) {
++                                                  int pe, int transport_idx, int index) {
+     nvshmem_transport_t transport = nvshmemi_state->transports[transport_idx];
+     size_t max_len = transport->max_op_len;
+ 
+-    handle->handle =
+-        nvshmemi_state->heap_obj->get_transport_mem_handle(addr, len, pe, transport_idx);
++    handle->handle[index] =
++        nvshmemi_state->heap_obj->get_transport_mem_handle(addr, len, pe, transport_idx, index);
+     handle->offset = nvshmemi_state->heap_obj->get_mem_handle_addr_offset(addr);
+     if (len) *len = *len < max_len ? *len : max_len;
+     assert(handle->handle != NULL);
+@@ -160,7 +160,7 @@ static inline void nvshmemi_get_remote_mem_handle(rma_memdesc_t *handle, size_t
+    lptr is local address - either symmetric or not */
+ static inline void nvshmemi_process_multisend_rma(struct nvshmem_transport *tcurr, int transport_id,
+                                                   int pe, rma_verb_t verb, void *rptr, void *lptr,
+-                                                  size_t size, bool is_proxy) {
++                                                  size_t size, bool is_proxy, int channelId) {
+     rma_memdesc_t localdesc, remotedesc;
+     rma_bytesdesc_t bytes;
+     bytes.srcstride = 1;
+@@ -177,11 +177,13 @@ static inline void nvshmemi_process_multisend_rma(struct nvshmem_transport *tcur
+         remotedesc.offset = (char *)rptr - (char *)nvshmemi_device_state.heap_base;
+         local_chunk_size = size_remaining;
+         remote_chunk_size = size_remaining;
+-        nvshmemi_get_local_mem_handle(&localdesc.handle, &local_chunk_size, lptr, transport_id);
+-        nvshmemi_get_remote_mem_handle(&remotedesc, &remote_chunk_size, rptr, pe, transport_id);
++        nvshmemi_get_local_mem_handle(&localdesc.handle[0], &local_chunk_size, lptr, transport_id, 0);
++        nvshmemi_get_local_mem_handle(&localdesc.handle[1], &local_chunk_size, lptr, transport_id, 1);
++        nvshmemi_get_remote_mem_handle(&remotedesc, &remote_chunk_size, rptr, pe, transport_id, 0);
++        nvshmemi_get_remote_mem_handle(&remotedesc, &remote_chunk_size, rptr, pe, transport_id, 1);
+         chunk_size = std::min(local_chunk_size, std::min(remote_chunk_size, size_remaining));
+         bytes.nelems = chunk_size;
+-        status = tcurr->host_ops.rma(tcurr, pe, verb, &remotedesc, &localdesc, bytes, is_proxy);
++        status = tcurr->host_ops.rma(tcurr, pe, verb, &remotedesc, &localdesc, bytes, is_proxy, channelId);
+         if (unlikely(status)) {
+             NVSHMEMI_ERROR_PRINT("aborting due to error in process_channel_dma\n");
+             exit(-1);
+diff --git a/src/include/internal/host/nvshmemi_mem_transport.hpp b/src/include/internal/host/nvshmemi_mem_transport.hpp
+index 2495844..8ba4e07 100644
+--- a/src/include/internal/host/nvshmemi_mem_transport.hpp
++++ b/src/include/internal/host/nvshmemi_mem_transport.hpp
+@@ -91,7 +91,7 @@ class nvshmemi_mem_remote_transport final {
+     /* On-demand registration and release of memory */
+     int register_mem_handle(nvshmem_mem_handle_t *local_handles, int transport_idx,
+                             nvshmem_mem_handle_t *in, void *buf, size_t size,
+-                            nvshmem_transport_t current);
++                            nvshmem_transport_t current, int index);
+     int release_mem_handles(nvshmem_mem_handle_t *handles, nvshmemi_symmetric_heap &obj);
+ 
+     int is_mem_handle_null(nvshmem_mem_handle_t *handle) {
+diff --git a/src/include/internal/host/nvshmemi_symmetric_heap.hpp b/src/include/internal/host/nvshmemi_symmetric_heap.hpp
+index ddaffa9..a798414 100644
+--- a/src/include/internal/host/nvshmemi_symmetric_heap.hpp
++++ b/src/include/internal/host/nvshmemi_symmetric_heap.hpp
+@@ -85,7 +85,7 @@ class nvshmemi_symmetric_heap {
+      * transport handle.
+      */
+     inline nvshmem_mem_handle *get_transport_mem_handle(void *addr, size_t *len, int pe,
+-                                                        int transport_idx);
++                                                        int transport_idx, int index);
+ 
+     inline size_t get_mem_handle_addr_offset(void *addr);
+ 
+@@ -159,7 +159,7 @@ class nvshmemi_symmetric_heap {
+      * Given an collection of local memory handles across all PEs, establish pairwise memory handles
+      * for processes connected over p2p transport
+      */
+-    virtual int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles) = 0;
++    virtual int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles, nvshmem_mem_handle_t *local_handles_2) = 0;
+ 
+     /**
+      * Given a peer mem handle, import the buffer range to target buf object
+@@ -228,13 +228,13 @@ class nvshmemi_symmetric_heap {
+         nullptr;                                     // holds an instance of remote abstraction
+     nvshmemi_mem_p2p_transport *p2p_ref_ = nullptr;  // holds an instance of memp2p abstraction
+     mspace *heap_mspace_ = nullptr;
+-    std::vector<std::vector<nvshmem_mem_handle>> handles_;
++    std::vector<std::vector<nvshmem_mem_handle>> handles_[2];
+     std::vector<std::tuple<size_t, void *, size_t>> idx_in_handles_;
+ };
+ 
+ inline nvshmem_mem_handle *nvshmemi_symmetric_heap::get_transport_mem_handle(void *addr,
+                                                                              size_t *len, int pe,
+-                                                                             int transport_idx) {
++                                                                             int transport_idx, int index) {
+     size_t addr_idx;
+     size_t handle_idx;
+     size_t handle_size;
+@@ -258,7 +258,7 @@ inline nvshmem_mem_handle *nvshmemi_symmetric_heap::get_transport_mem_handle(voi
+     if (len) {
+         *len = handle_size - ((char *)addr - (char *)handle_start_addr);
+     }
+-    return &handles_[handle_idx][handle_sub_index];
++    return &handles_[index][handle_idx][handle_sub_index];
+ }
+ 
+ inline size_t nvshmemi_symmetric_heap::get_mem_handle_addr_offset(void *addr) {
+@@ -293,7 +293,7 @@ class nvshmemi_symmetric_heap_static : public nvshmemi_symmetric_heap {
+ 
+     virtual int register_heap_memory_handle(nvshmem_mem_handle_t *local, int transport_idx,
+                                             nvshmem_mem_handle_t *in, void *buf, size_t size,
+-                                            nvshmem_transport_t current) = 0;
++                                            nvshmem_transport_t current, int index) = 0;
+     virtual int register_heap_chunk(nvshmem_mem_handle_t *mem_handle, void *buf, size_t size);
+     virtual int setup_mspace();
+ 
+@@ -367,10 +367,10 @@ class nvshmemi_symmetric_heap_vidmem_static_pinned final
+    protected:
+     int allocate_heap_memory();
+     int free_heap_memory(void *addr);
+-    int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles);
++    int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles, nvshmem_mem_handle_t *local_handles_2);
+     int register_heap_memory_handle(nvshmem_mem_handle_t *local, int transport_idx,
+                                     nvshmem_mem_handle_t *in, void *buf, size_t size,
+-                                    nvshmem_transport_t current);
++                                    nvshmem_transport_t current, int index);
+     int map_heap_chunk(int pe_id, int transport_idx, char *buf = nullptr, size_t size = 0);
+ 
+     int export_memory(nvshmem_mem_handle_t *mem_handle, void *buf, size_t length);
+@@ -410,7 +410,7 @@ class nvshmemi_symmetric_heap_vidmem_dynamic_vmm final
+     size_t get_cumem_handle_mmap_size(int i) { return std::get<3>(cumem_handles_[i]); }
+     size_t get_cumem_handle_size(void) { return cumem_handles_.size(); }
+     void print_cumem_handles(void);
+-    int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles);
++    int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles, nvshmem_mem_handle_t *local_handles_2);
+     int map_heap_chunk(int pe_id, int transport_idx, char *buf, size_t size);
+     int import_memory(nvshmem_mem_handle_t *mem_handle, void **buf, size_t length);
+     int export_memory(nvshmem_mem_handle_t *mem_handle, nvshmem_mem_handle_t *mem_handle_in);
+@@ -470,13 +470,13 @@ class nvshmemi_symmetric_heap_sysmem_static_shm final
+     }
+     int register_heap_memory_handle(nvshmem_mem_handle_t *local, int transport_idx,
+                                     nvshmem_mem_handle_t *in, void *buf, size_t size,
+-                                    nvshmem_transport_t current);
++                                    nvshmem_transport_t current, int index);
+ 
+    protected:
+     int allocate_heap_memory();
+     int free_heap_memory(void *addr);
+ 
+-    int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles);
++    int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles, nvshmem_mem_handle_t *local_handles_2);
+     int map_heap_chunk(int pe_id, int transport_idx, char *buf = nullptr, size_t size = 0);
+ 
+     /** Stubbed out for P2P transport as export is non-action, import is done at allocation time,
+diff --git a/src/include/internal/host_transport/transport.h b/src/include/internal/host_transport/transport.h
+index 0f4cc76..6a5bd84 100644
+--- a/src/include/internal/host_transport/transport.h
++++ b/src/include/internal/host_transport/transport.h
+@@ -81,7 +81,7 @@ typedef struct rma_verb {
+ typedef struct rma_memdesc {
+     void *ptr;
+     uint64_t offset;
+-    nvshmem_mem_handle_t *handle;
++    nvshmem_mem_handle_t *handle[2];
+ } rma_memdesc_t;
+ 
+ typedef struct rma_bytesdesc {
+@@ -106,7 +106,7 @@ typedef struct amo_memdesc {
+     void *cmpptr;
+     uint64_t val;
+     uint64_t cmp;
+-    nvshmem_mem_handle_t *ret_handle;
++    nvshmem_mem_handle_t *ret_handle[2];
+ } amo_memdesc_t;
+ 
+ typedef struct amo_bytesdesc {
+@@ -116,9 +116,9 @@ typedef struct amo_bytesdesc {
+ 
+ typedef int (*rma_handle)(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
+                           rma_memdesc_t *remote, rma_memdesc_t *local, rma_bytesdesc_t bytesdesc,
+-                          int is_proxy);
++                          int is_proxy, int channelId);
+ typedef int (*amo_handle)(struct nvshmem_transport *tcurr, int pe, void *curetptr, amo_verb_t verb,
+-                          amo_memdesc_t *target, amo_bytesdesc_t bytesdesc, int is_proxy);
++                          amo_memdesc_t *target, amo_bytesdesc_t bytesdesc, int is_proxy, int channelId);
+ typedef int (*fence_handle)(struct nvshmem_transport *tcurr, int pe, int is_proxy);
+ typedef int (*quiet_handle)(struct nvshmem_transport *tcurr, int pe, int is_proxy);
+ 
+@@ -129,7 +129,7 @@ struct nvshmem_transport_host_ops {
+                              int num_selected_devs);
+     int (*get_mem_handle)(nvshmem_mem_handle_t *mem_handle, nvshmem_mem_handle_t *mem_handle_in,
+                           void *buf, size_t size, struct nvshmem_transport *transport,
+-                          bool local_only);
++                          bool local_only, int index);
+     int (*release_mem_handle)(nvshmem_mem_handle_t *mem_handle,
+                               struct nvshmem_transport *transport);
+     int (*finalize)(struct nvshmem_transport *transport);
+diff --git a/src/include/internal/non_abi/nvshmemi_h_to_d_rma_defs.cuh b/src/include/internal/non_abi/nvshmemi_h_to_d_rma_defs.cuh
+index 48e1438..8ea33aa 100644
+--- a/src/include/internal/non_abi/nvshmemi_h_to_d_rma_defs.cuh
++++ b/src/include/internal/non_abi/nvshmemi_h_to_d_rma_defs.cuh
+@@ -36,19 +36,19 @@ __device__ void nvshmemi_transfer_rma_nbi_translator(void *rptr, void *lptr,
+     switch (desc) {
+         case NVSHMEMI_OP_PUT:
+             nvshmemi_transfer_rma_nbi<NVSHMEMI_THREADGROUP_THREAD, NVSHMEMI_OP_PUT>(
+-                (void *)rptr, (void *)lptr, (size_t)(bytesdesc.nelems * bytesdesc.elembytes), pe);
++                (void *)rptr, (void *)lptr, (size_t)(bytesdesc.nelems * bytesdesc.elembytes), pe, 0);
+             break;
+         case NVSHMEMI_OP_P:
+             nvshmemi_transfer_rma_nbi<NVSHMEMI_THREADGROUP_THREAD, NVSHMEMI_OP_PUT>(
+-                (void *)rptr, (void *)lptr, (size_t)(bytesdesc.nelems * bytesdesc.elembytes), pe);
++                (void *)rptr, (void *)lptr, (size_t)(bytesdesc.nelems * bytesdesc.elembytes), pe, 0);
+             break;
+         case NVSHMEMI_OP_GET:
+             nvshmemi_transfer_rma_nbi<NVSHMEMI_THREADGROUP_THREAD, NVSHMEMI_OP_GET>(
+-                (void *)rptr, (void *)lptr, (size_t)(bytesdesc.nelems * bytesdesc.elembytes), pe);
++                (void *)rptr, (void *)lptr, (size_t)(bytesdesc.nelems * bytesdesc.elembytes), pe, 0);
+             break;
+         case NVSHMEMI_OP_G:
+             nvshmemi_transfer_rma_nbi<NVSHMEMI_THREADGROUP_THREAD, NVSHMEMI_OP_GET>(
+-                (void *)rptr, (void *)lptr, (size_t)(bytesdesc.nelems * bytesdesc.elembytes), pe);
++                (void *)rptr, (void *)lptr, (size_t)(bytesdesc.nelems * bytesdesc.elembytes), pe, 0);
+             break;
+         default:
+             printf("Incorrect argument to on-stream\n");
+@@ -78,7 +78,7 @@ __global__ void nvshmemi_proxy_rma_signal_entrypoint(void *rptr, void *lptr,
+                                                      const nvshmemi_op_t desc) {
+ #ifdef __CUDA_ARCH__
+     nvshmemi_transfer_rma_nbi_translator((void *)rptr, (void *)lptr, bytesdesc, pe, desc);
+-    nvshmemi_transfer_amo_nonfetch((void *)sig_addr, signal, pe, (nvshmemi_amo_t)sig_op);
++    nvshmemi_transfer_amo_nonfetch((void *)sig_addr, signal, pe, (nvshmemi_amo_t)sig_op, 0);
+ #endif
+ }
+ 
+diff --git a/src/include/internal/non_abi/nvshmemi_h_to_d_sync_defs.cuh b/src/include/internal/non_abi/nvshmemi_h_to_d_sync_defs.cuh
+index 02975dc..15edeb4 100644
+--- a/src/include/internal/non_abi/nvshmemi_h_to_d_sync_defs.cuh
++++ b/src/include/internal/non_abi/nvshmemi_h_to_d_sync_defs.cuh
+@@ -79,7 +79,7 @@ static __global__ void nvshmemi_signal_wait_until_on_stream_kernel(volatile uint
+ static __global__ void nvshmemi_signal_op_kernel(uint64_t *sig_addr, uint64_t signal, int sig_op,
+                                                  int pe) {
+ #ifdef __CUDA_ARCH__
+-    nvshmemi_signal_op(sig_addr, signal, sig_op, pe);
++    nvshmemi_signal_op(sig_addr, signal, sig_op, pe, 0);
+ #endif
+ }
+ 
+diff --git a/src/include/non_abi/device/coll/alltoall.cuh b/src/include/non_abi/device/coll/alltoall.cuh
+index d0239ca..84ca137 100644
+--- a/src/include/non_abi/device/coll/alltoall.cuh
++++ b/src/include/non_abi/device/coll/alltoall.cuh
+@@ -53,7 +53,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
+                 (void *)(psync + mype), 1ULL, NVSHMEMI_AMO_SIGNAL_ADD, next_rank, true);
+         } else if (msgsize <= NVSHMEMI_ALLTOALL_SMALL_MSGSIZE) {
+             nvshmemi_put_nbi_threadgroup<T, NVSHMEMI_THREADGROUP_THREAD>(
+-                dest + dst_offset, source + src_offset, nelems, next_rank);
++                dest + dst_offset, source + src_offset, nelems, next_rank, 0);
+         }
+     }
+ 
+@@ -70,7 +70,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
+                     next_rank);
+                 if (peer_base_addr) {
+                     nvshmemi_put_nbi_threadgroup<T, NVSHMEMI_THREADGROUP_WARP>(
+-                        dest + dst_offset, source + src_offset, nelems, next_rank);
++                        dest + dst_offset, source + src_offset, nelems, next_rank, 0);
+                 }
+             }
+         }
+@@ -82,7 +82,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
+                 (const long long unsigned *)nvshmemi_device_state_d.peer_heap_base_p2p + next_rank);
+             if (peer_base_addr) {
+                 nvshmemi_put_nbi_threadgroup<T, SCOPE>(dest + dst_offset, source + src_offset,
+-                                                       nelems, next_rank);
++                                                       nelems, next_rank, 0);
+             }
+         }
+     }
+@@ -100,7 +100,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
+         void *peer_base_addr = (void *)__ldg(
+             (const long long unsigned *)nvshmemi_device_state_d.peer_heap_base_p2p + next_rank);
+         if (peer_base_addr) {
+-            nvshmemi_signal_op((psync + mype), 1ULL, NVSHMEMI_AMO_SIGNAL_ADD, next_rank);
++            nvshmemi_signal_op((psync + mype), 1ULL, NVSHMEMI_AMO_SIGNAL_ADD, next_rank, 0);
+         }
+     }
+ 
+diff --git a/src/include/non_abi/device/coll/broadcast.cuh b/src/include/non_abi/device/coll/broadcast.cuh
+index ad170f9..acc7d3e 100644
+--- a/src/include/non_abi/device/coll/broadcast.cuh
++++ b/src/include/non_abi/device/coll/broadcast.cuh
+@@ -81,7 +81,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_bcast_intranode_tree_thre
+ 
+             nvshmemii_put_nbi_threadgroup<uint64_t, SCOPE>(
+                 (uint64_t *)(pWrk + recv_offset), (uint64_t *)(pWrk + recv_offset),
+-                nelems * sizeof(T) / sizeof(uint32_t), child);
++                nelems * sizeof(T) / sizeof(uint32_t), child, 0);
+         }
+     }
+     if (PE_root == my_pe_in_team && dest != source)
+@@ -127,7 +127,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_bcast_internode_tree_thre
+ 
+         nvshmemi_put_nbi_threadgroup<uint64_t, NVSHMEMI_THREADGROUP_THREAD>(
+             (uint64_t *)(pWrk + recv_offset), (uint64_t *)(pWrk + recv_offset),
+-            nelems * sizeof(T) / sizeof(uint32_t), child);
++            nelems * sizeof(T) / sizeof(uint32_t), child, 0);
+     }
+     if (PE_root == my_pe_in_team && dest != source)
+         nvshmemi_memcpy_threadgroup<SCOPE>(dest, source, nelems * sizeof(T));
+@@ -174,7 +174,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_bcast_tree_threadgroup(
+         if (is_remote)
+             nvshmemi_put_nbi_threadgroup<uint64_t, NVSHMEMI_THREADGROUP_THREAD>(
+                 (uint64_t *)(pWrk + recv_offset), (uint64_t *)(pWrk + recv_offset),
+-                nelems * sizeof(T) / sizeof(uint32_t), child);
++                nelems * sizeof(T) / sizeof(uint32_t), child, 0);
+     }
+ 
+     /* Do P2P transfers */
+@@ -188,7 +188,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_bcast_tree_threadgroup(
+         if (!is_remote)
+             nvshmemii_put_nbi_threadgroup<uint64_t, SCOPE>(
+                 (uint64_t *)(pWrk + recv_offset), (uint64_t *)(pWrk + recv_offset),
+-                nelems * sizeof(T) / sizeof(uint32_t), child);
++                nelems * sizeof(T) / sizeof(uint32_t), child, 0);
+     }
+ 
+     if (PE_root == my_pe_in_team && dest != source)
+@@ -275,7 +275,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_bcast_put2all_threadgroup
+     int PE_end = PE_start + (stride * PE_size);
+     if (root == nvshmemi_device_state_d.mype) {
+         for (i = PE_start; i < PE_end; i += stride) {
+-            nvshmemi_put_nbi_threadgroup<T, SCOPE>(dest, source, nelems, i);
++            nvshmemi_put_nbi_threadgroup<T, SCOPE>(dest, source, nelems, i, 0);
+         }
+     }
+     nvshmemi_barrier_threadgroup<SCOPE>(team);
+diff --git a/src/include/non_abi/device/coll/fcollect.cuh b/src/include/non_abi/device/coll/fcollect.cuh
+index 20a94c3..735e1bc 100644
+--- a/src/include/non_abi/device/coll/fcollect.cuh
++++ b/src/include/non_abi/device/coll/fcollect.cuh
+@@ -167,11 +167,11 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_FORCE_INLINE void nvshmemi_fcollect_allpush_ll
+                 if (nvshmemi_ptr(pWrk, next_pe) == NULL) {
+                     nvshmemi_put_nbi_threadgroup<T, NVSHMEMI_THREADGROUP_THREAD>(
+                         pWrk + pack_offset, pWrk + pack_offset, psync_remote_write_elements,
+-                        next_pe);
++                        next_pe, 0);
+                 }
+             } else {
+                 nvshmemi_put_nbi_threadgroup<T, NVSHMEMI_THREADGROUP_THREAD>(
+-                    pWrk + pack_offset, pWrk + pack_offset, psync_remote_write_elements, next_pe);
++                    pWrk + pack_offset, pWrk + pack_offset, psync_remote_write_elements, next_pe, 0);
+             }
+         }
+         nvshmemi_threadgroup_sync<NVSHMEMI_THREADGROUP_WARP>();
+@@ -325,7 +325,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_fcollect_allpush_threadgr
+     // nvshmemi_threadgroup_sync<SCOPE>();
+     for (int ii = 0; ii < PE_size; ii++) {
+         next_rank = PE_start + ((my_idx_in_active_set + ii) % PE_size) * stride;
+-        nvshmemi_put_nbi_threadgroup<T, SCOPE>(dest + dest_offset, source, nelems, next_rank);
++        nvshmemi_put_nbi_threadgroup<T, SCOPE>(dest + dest_offset, source, nelems, next_rank, 0);
+     }
+     nvshmemi_barrier_threadgroup<SCOPE>(team);
+ }
+diff --git a/src/include/non_abi/device/coll/reduce.cuh b/src/include/non_abi/device/coll/reduce.cuh
+index 640262a..c874f1a 100644
+--- a/src/include/non_abi/device/coll/reduce.cuh
++++ b/src/include/non_abi/device/coll/reduce.cuh
+@@ -525,7 +525,7 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_on_demand
+     for (i = 1; i < size; i++) {
+         next_rank = start + ((my_active_set_pe + i) % size) * stride;
+         nvshmemi_put_nbi_threadgroup<TYPE, NVSHMEMI_THREADGROUP_THREAD>((TYPE *)tmp_operand, source,
+-                                                                        nelems, next_rank);
++                                                                        nelems, next_rank, 0);
+         nvshmemi_quiet<NVSHMEMI_THREADGROUP_THREAD>();
+         sync_dissem_threadgroup_2<NVSHMEMI_THREADGROUP_THREAD>(start, stride, size, pSync,
+                                                                sync_counter);
+@@ -583,7 +583,7 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_recexch_t
+ 
+     if (in_step2 == 0) {
+         size_t offset = (step1_sendto - rank - 1) * nreduce;
+-        nvshmemi_put_nbi_threadgroup<TYPE, SCOPE>(pWrk + offset, source, nreduce, step1_sendto);
++        nvshmemi_put_nbi_threadgroup<TYPE, SCOPE>(pWrk + offset, source, nreduce, step1_sendto, 0);
+         if (!myIdx) {
+             nvshmemi_fence();
+             nvshmemi_signal_for_barrier<long>((long *)(pSync + rank), sync_counter[0],
+@@ -621,7 +621,7 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_recexch_t
+                 size_t offset = recv_offset + k * phase * nreduce + num_small * nreduce;
+                 nvshmemi_put_nbi_threadgroup<TYPE, SCOPE>(pWrk + offset,
+                                                           pWrk + send_offset + phase * nreduce,
+-                                                          nreduce, step2_nbrs[phase][i]);
++                                                          nreduce, step2_nbrs[phase][i], 0);
+             }
+             if (!myIdx) nvshmemi_fence();
+             nvshmemi_threadgroup_sync<SCOPE>();
+@@ -647,7 +647,7 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_recexch_t
+     /* Step 3 */
+     if (step1_nrecvs > 0) {
+         for (int i = 0; i < step1_nrecvs; i++) {
+-            nvshmemi_put_nbi_threadgroup<TYPE, SCOPE>(dst, dst, nreduce, step1_recvfrom[i]);
++            nvshmemi_put_nbi_threadgroup<TYPE, SCOPE>(dst, dst, nreduce, step1_recvfrom[i], 0);
+         }
+         if (!myIdx) nvshmemi_fence();
+         nvshmemi_threadgroup_sync<SCOPE>();
+@@ -738,7 +738,7 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE __device__ void gpu_rdxn_segment_t
+ 
+     tmp_operand = (TYPE *)pWrk;
+     nvshmemi_put_nbi_threadgroup<TYPE, SCOPE>((TYPE *)dest, (const TYPE *)source, nelems,
+-                                              nvshmemi_device_state_d.mype);
++                                              nvshmemi_device_state_d.mype, 0);
+ 
+     rnds_floor = msg_len / nvshm_gpu_rdxn_seg_size;
+     remainder = msg_len % nvshm_gpu_rdxn_seg_size;
+@@ -749,7 +749,7 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE __device__ void gpu_rdxn_segment_t
+             next_rank = start + ((my_active_set_pe + i) % size) * stride;
+             nvshmemi_put_nbi_threadgroup<TYPE, SCOPE>((TYPE *)tmp_operand,
+                                                       (const TYPE *)source + offset,
+-                                                      (exchange_size / sizeof(TYPE)), next_rank);
++                                                      (exchange_size / sizeof(TYPE)), next_rank, 0);
+             nvshmemi_barrier_threadgroup<SCOPE>(team);
+             op1 = (TYPE *)dest + offset;
+             op2 = (TYPE *)tmp_operand;
+@@ -769,7 +769,7 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE __device__ void gpu_rdxn_segment_t
+                 next_rank = start + ((my_active_set_pe + i) % size) * stride;
+                 nvshmemi_put_nbi_threadgroup<TYPE, SCOPE>(
+                     (TYPE *)((TYPE *)tmp_operand + (round * (exchange_size / sizeof(TYPE)))),
+-                    (TYPE *)source + offset, (exchange_size / sizeof(TYPE)), next_rank);
++                    (TYPE *)source + offset, (exchange_size / sizeof(TYPE)), next_rank, 0);
+                 round++;
+                 pe_offset++;
+             }
+@@ -1222,7 +1222,7 @@ nvshmemi_double2_maxloc_reduce_alltoall_block(nvshmem_team_t team, double2 *dest
+         size_t offset = 2 * sizeof(double2) * (my_pe + 2);
+         nvshmemi_put_nbi_threadgroup<uint64_t, NVSHMEMI_THREADGROUP_THREAD>(
+             (uint64_t *)(pWrk + offset), (uint64_t *)(pWrk), sizeof(double2) / sizeof(uint32_t),
+-            nvshmemi_team_translate_pe(team, peer, NVSHMEM_TEAM_WORLD));
++            nvshmemi_team_translate_pe(team, peer, NVSHMEM_TEAM_WORLD), 0);
+     }
+ 
+     if (!myIdx) {
+@@ -1260,7 +1260,7 @@ nvshmemi_double2_maxloc_rooted_reduce_flat_block(nvshmem_team_t team, double2 *d
+         size_t offset = 2 * sizeof(double2) * nvshmemi_team_my_pe(team);
+         nvshmemi_put_nbi_threadgroup<uint64_t, SCOPE>(
+             (uint64_t *)(pWrk + offset), (uint64_t *)(pWrk), sizeof(double2) / sizeof(uint32_t),
+-            nvshmemi_team_translate_pe(team, 0, NVSHMEM_TEAM_WORLD));
++            nvshmemi_team_translate_pe(team, 0, NVSHMEM_TEAM_WORLD), 0);
+     } else {
+         dest[0] = source[0];
+         if (!myIdx) {
+diff --git a/src/include/non_abi/device/coll/reducescatter.cuh b/src/include/non_abi/device/coll/reducescatter.cuh
+index 2f0d3c3..24d64b9 100644
+--- a/src/include/non_abi/device/coll/reducescatter.cuh
++++ b/src/include/non_abi/device/coll/reducescatter.cuh
+@@ -57,7 +57,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_reducescatter_allpush_thr
+         int peer_pe = nvshmemi_team_translate_pe(team, peer_pe_idx, NVSHMEM_TEAM_WORLD);
+         nvshmemii_put_nbi_threadgroup<TYPE, SCOPE>(
+             (TYPE *)((char *)pWrk + teami->my_pe * nreduce * sizeof(TYPE)),
+-            source + peer_pe_idx * nreduce, nreduce, peer_pe);
++            source + peer_pe_idx * nreduce, nreduce, peer_pe, 0);
+     }
+     nvshmemi_barrier_threadgroup<SCOPE>(team);
+ 
+diff --git a/src/include/non_abi/device/coll/utils.cuh b/src/include/non_abi/device/coll/utils.cuh
+index 30d4656..bbe31e6 100644
+--- a/src/include/non_abi/device/coll/utils.cuh
++++ b/src/include/non_abi/device/coll/utils.cuh
+@@ -45,7 +45,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_signal_for_barrier(T *des
+                            ((char *)dest - (char *)(nvshmemi_device_state_d.heap_base)));
+         *dest_actual = value;
+     } else {
+-        nvshmemi_transfer_amo_nonfetch<T>((void *)dest, value, pe, NVSHMEMI_AMO_SIGNAL);
++        nvshmemi_transfer_amo_nonfetch<T>((void *)dest, value, pe, NVSHMEMI_AMO_SIGNAL, 0);
+     }
+ }
+ #endif /* __CUDA_ARCH__ */
+diff --git a/src/include/non_abi/device/common/nvshmemi_common_device.cuh b/src/include/non_abi/device/common/nvshmemi_common_device.cuh
+index f4c2b6f..8d3f78b 100644
+--- a/src/include/non_abi/device/common/nvshmemi_common_device.cuh
++++ b/src/include/non_abi/device/common/nvshmemi_common_device.cuh
+@@ -394,7 +394,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_put_threadgroup(T *dest,
+ 
+ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_signal_op(uint64_t *sig_addr,
+                                                                  uint64_t signal, int sig_op,
+-                                                                 int pe) {
++                                                                 int pe, int channelId) {
+     const void *peer_base_addr =
+         (void *)__ldg((const long long unsigned *)nvshmemi_device_state_d.peer_heap_base_p2p + pe);
+     if (sig_op == NVSHMEMI_AMO_SIGNAL_SET && peer_base_addr != NULL) {
+@@ -410,7 +410,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_signal_op(uint64_t *sig_a
+         atomicAdd_system((unsigned long long *)dest_actual, signal);
+     } else {
+         nvshmemi_transfer_amo_nonfetch<uint64_t>((void *)sig_addr, signal, pe,
+-                                                 (nvshmemi_amo_t)sig_op);
++                                                 (nvshmemi_amo_t)sig_op, channelId);
+     }
+ }
+ 
+@@ -429,7 +429,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemii_put_signal_threadgroup(
+         nvshmemi_threadgroup_sync<SCOPE>();
+         if (!myIdx) {
+             __threadfence_system();
+-            nvshmemi_signal_op(sig_addr, signal, sig_op, pe);
++            nvshmemi_signal_op(sig_addr, signal, sig_op, pe, 0);
+         }
+     } else {
+         nvshmemi_transfer_put_signal<SCOPE>((void *)dest, (void *)source, nelems * sizeof(T),
+@@ -469,7 +469,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_get_threadgroup(T *dest,
+ template <typename T, threadgroup_t SCOPE>
+ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemii_put_nbi_threadgroup(T *dest,
+                                                                             const T *source,
+-                                                                            size_t nelems, int pe) {
++                                                                            size_t nelems, int pe, int channelId) {
+     void *peer_base_addr =
+         (void *)__ldg((const long long unsigned *)nvshmemi_device_state_d.peer_heap_base_p2p + pe);
+     if (peer_base_addr) {
+@@ -479,15 +479,15 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemii_put_nbi_threadgroup(T *d
+                                            nelems * sizeof(T));
+     } else {
+         nvshmemi_transfer_rma_nbi<SCOPE, NVSHMEMI_OP_PUT>((void *)dest, (void *)source,
+-                                                          nelems * sizeof(T), pe);
++                                                          nelems * sizeof(T), pe, channelId);
+     }
+ }
+ 
+ template <typename T, threadgroup_t SCOPE>
+ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_put_nbi_threadgroup(T *dest, const T *source,
+-                                                                           size_t nelems, int pe) {
++                                                                           size_t nelems, int pe, int channelId) {
+     nvshmemi_threadgroup_sync<SCOPE>();
+-    nvshmemii_put_nbi_threadgroup<T, SCOPE>(dest, source, nelems, pe);
++    nvshmemii_put_nbi_threadgroup<T, SCOPE>(dest, source, nelems, pe, channelId);
+     nvshmemi_threadgroup_sync<SCOPE>();
+ }
+ 
+@@ -504,7 +504,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_get_nbi_threadgroup(T *de
+                                            nelems * sizeof(T));
+     } else {
+         nvshmemi_transfer_rma_nbi<SCOPE, NVSHMEMI_OP_GET>((void *)source, (void *)dest,
+-                                                          nelems * sizeof(T), pe);
++                                                          nelems * sizeof(T), pe, 0);
+     }
+     nvshmemi_threadgroup_sync<SCOPE>();
+ }
+diff --git a/src/include/non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh b/src/include/non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh
+index f7fbf16..e26bd23 100644
+--- a/src/include/non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh
++++ b/src/include/non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh
+@@ -24,13 +24,13 @@ __device__ void nvshmemi_transfer_put_signal(void *rptr, void *lptr, size_t byte
+                                              bool is_nbi);
+ 
+ template <threadgroup_t SCOPE, nvshmemi_op_t channel_op>
+-__device__ void nvshmemi_transfer_rma_nbi(void *rptr, void *lptr, size_t bytes, int pe);
++__device__ void nvshmemi_transfer_rma_nbi(void *rptr, void *lptr, size_t bytes, int pe, int channelId);
+ 
+ template <typename T>
+ __device__ T nvshmemi_transfer_amo_fetch(void *rptr, T value, T compare, int pe, nvshmemi_amo_t op);
+ 
+ template <typename T>
+-__device__ void nvshmemi_transfer_amo_nonfetch(void *rptr, T value, int pe, nvshmemi_amo_t op);
++__device__ void nvshmemi_transfer_amo_nonfetch(void *rptr, T value, int pe, nvshmemi_amo_t op, int channelId);
+ 
+ template <threadgroup_t SCOPE>
+ __device__ void nvshmemi_transfer_quiet(bool use_membar);
+diff --git a/src/include/non_abi/device/pt-to-pt/proxy_device.cuh b/src/include/non_abi/device/pt-to-pt/proxy_device.cuh
+index 184dac5..2cd345b 100644
+--- a/src/include/non_abi/device/pt-to-pt/proxy_device.cuh
++++ b/src/include/non_abi/device/pt-to-pt/proxy_device.cuh
+@@ -155,7 +155,7 @@ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void copy_to_channel(vo
+ }
+ 
+ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_FORCE_INLINE __device__ void transfer_dma(
+-    void *rptr, void *lptr, size_t bytes, int pe, int channel_op) {
++    void *rptr, void *lptr, size_t bytes, int pe, int channel_op, int channelId) {
+     uint64_t idx, tail_idx, *req;
+     int size = PROXY_DMA_REQ_BYTES;
+     int group_size = 1;
+@@ -214,11 +214,11 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_FORCE_INLINE __device__ void transfer_dma
+ 
+     /* put_dma_request_2
+      * 32 | 16 | 8 | 8
+-     * resv2 | pe | resv1 | flag */
++     * channelId | pe | resv1 | flag */
+     idx += CHANNEL_ENTRY_BYTES;
+     req = (uint64_t *)((uint8_t *)buf_ptr + (idx & (CHANNEL_BUF_SIZE - 1)));
+     curr_flag = !((idx >> nvshmemi_device_state_d.proxy_channel_buf_logsize) & 1);
+-    *((volatile uint64_t *)req) = (uint64_t)((pe_u16 << 16) | curr_flag);
++    *((volatile uint64_t *)req) = (uint64_t)(((uint64_t)channelId << 32) | (pe_u16 << 16) | curr_flag);
+ }
+ 
+ /*XXX : Only no const version is used*/
+@@ -233,9 +233,9 @@ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_proxy_rma
+ }
+ 
+ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_FORCE_INLINE void nvshmemi_proxy_rma_nbi(
+-    void *rptr, void *lptr, size_t bytes, int pe, nvshmemi_op_t op) {
++    void *rptr, void *lptr, size_t bytes, int pe, nvshmemi_op_t op, int channelId) {
+     if (!bytes) return;
+-    transfer_dma(rptr, lptr, bytes, pe, op);
++    transfer_dma(rptr, lptr, bytes, pe, op, channelId);
+ }
+ 
+ template <typename T>
+@@ -278,7 +278,7 @@ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE T nvshmemi_proxy_rma_g(
+             nvshmemi_proxy_rma_nbi(source,
+                                    (void *)(nvshmemi_device_state_d.proxy_channel_g_coalescing_buf +
+                                             coalescing_buf_byte_offset),
+-                                   NVSHMEMI_WARP_SIZE * sizeof(T), pe, NVSHMEMI_OP_G);
++                                   NVSHMEMI_WARP_SIZE * sizeof(T), pe, NVSHMEMI_OP_G, 0);
+             nvshmemi_proxy_quiet(false);
+         }
+         coalescing_buf_byte_offset = __shfl_sync(amask, coalescing_buf_byte_offset, 0);
+@@ -307,7 +307,7 @@ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE T nvshmemi_proxy_rma_g(
+         nvshmemi_wait_until_greater_than_equals<uint64_t>((volatile uint64_t *)&(elem->flag), flag,
+                                                           NVSHMEMI_CALL_SITE_G_WAIT_FLAG);
+ 
+-        nvshmemi_proxy_rma_nbi(source, (void *)elem, sizeof(T), pe, NVSHMEMI_OP_G);
++        nvshmemi_proxy_rma_nbi(source, (void *)elem, sizeof(T), pe, NVSHMEMI_OP_G, 0);
+         nvshmemi_proxy_quiet(false);
+ 
+         __threadfence();
+@@ -412,7 +412,7 @@ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_proxy_rma
+ template <typename T>
+ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void amo(
+     void *rptr, uint64_t g_buf_counter /* used only for fetch atomics */, T swap_add, T compare,
+-    int pe, nvshmemi_amo_t amo_op) {
++    int pe, nvshmemi_amo_t amo_op, int channelId) {
+     uint64_t idx, tail_idx, *req;
+     int size = PROXY_AMO_REQ_BYTES;
+     int group_size = 1;
+@@ -486,12 +486,20 @@ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void amo(
+     /* assumes g_buf_counter <= (1 << 56) */
+     const uint64_t g_buf_counter_low = g_buf_counter & mask_1_byte;
+     *((volatile uint64_t *)req) = (g_buf_counter_low << 8 | curr_flag);
++
++    /* amo_request_4
++     * 32 | 16 | 8 | 8
++     * channelId | resv1 | resv | flag */
++    idx += CHANNEL_ENTRY_BYTES;
++    req = (uint64_t *)((uint8_t *)buf_ptr + (idx & (CHANNEL_BUF_SIZE - 1)));
++    curr_flag = !((idx >> nvshmemi_device_state_d.proxy_channel_buf_logsize) & 1);
++    *((volatile uint64_t *)req) = ((uint64_t)channelId << 32 | curr_flag);
+ }
+ 
+ template <typename T>
+ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_proxy_amo_nonfetch(
+-    void *rptr, T swap_add, int pe, nvshmemi_amo_t op) {
+-    amo<T>(rptr, 0 /* dummy value */, swap_add, 0, pe, op);
++    void *rptr, T swap_add, int pe, nvshmemi_amo_t op, int channelId) {
++    amo<T>(rptr, 0 /* dummy value */, swap_add, 0, pe, op, channelId);
+ }
+ 
+ template <typename T>
+@@ -510,7 +518,7 @@ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_proxy_amo
+                                                       NVSHMEMI_CALL_SITE_AMO_FETCH_WAIT_FLAG);
+     __threadfence();
+ 
+-    amo<T>(rptr, counter, swap_add, compare, pe, op);
++    amo<T>(rptr, counter, swap_add, compare, pe, op, 0);
+ 
+     /* The IBDEVX transport doesn't rely on an active message from the receiver for atomics. */
+     if (nvshmemi_device_state_d.atomics_complete_on_quiet) {
+diff --git a/src/include/non_abi/device/pt-to-pt/transfer_device.cuh.in b/src/include/non_abi/device/pt-to-pt/transfer_device.cuh.in
+index 18cfe89..302ae8a 100644
+--- a/src/include/non_abi/device/pt-to-pt/transfer_device.cuh.in
++++ b/src/include/non_abi/device/pt-to-pt/transfer_device.cuh.in
+@@ -121,7 +121,7 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
+     {
+         int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+         if (!myIdx) {
+-            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op);
++            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op, 0);
+             nvshmemi_proxy_quiet(false);
+             if (SCOPE == nvshmemi_threadgroup_thread)
+                 __threadfence_block(); /* to prevent reuse of src buffer before quiet completion;
+@@ -150,9 +150,9 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
+     {
+         int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+         if (!myIdx) {
+-            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, NVSHMEMI_OP_PUT);
++            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, NVSHMEMI_OP_PUT, 0);
+             nvshmemi_proxy_fence();
+-            nvshmemi_proxy_amo_nonfetch<uint64_t>(sig_addr, signal, pe, sig_op);
++            nvshmemi_proxy_amo_nonfetch<uint64_t>(sig_addr, signal, pe, sig_op, 0);
+             if (is_nbi == 0) {
+                 nvshmemi_proxy_quiet(false);
+                 if (SCOPE == nvshmemi_threadgroup_thread)
+@@ -173,7 +173,7 @@ TRANSFER_REPT_FOR_ALL_SCOPES(TRANSFER_DECL_PUT_SIGNAL)
+ 
+ template <threadgroup_t SCOPE, nvshmemi_op_t channel_op>
+ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_transfer_rma_nbi(
+-    void *rptr, void *lptr, size_t bytes, int pe) {
++    void *rptr, void *lptr, size_t bytes, int pe, int channelId) {
+ #ifdef NVSHMEM_IBGDA_SUPPORT
+     if (nvshmemi_device_state_d.ibgda_is_initialized) {
+         nvshmemi_ibgda_rma_nbi<SCOPE, channel_op>(rptr, lptr, bytes, pe);
+@@ -181,15 +181,15 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
+ #endif
+     {
+         int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+-        if (!myIdx) nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op);
++        if (!myIdx) nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op, channelId);
+     }
+ }
+ 
+ #define TRANSFER_DECL_RMA_NBI(SCOPE)                                            \
+     template __device__ void nvshmemi_transfer_rma_nbi<SCOPE, NVSHMEMI_OP_PUT>( \
+-        void *rptr, void *lptr, size_t bytes, int pe);                          \
++        void *rptr, void *lptr, size_t bytes, int pe, int channelId);          \
+     template __device__ void nvshmemi_transfer_rma_nbi<SCOPE, NVSHMEMI_OP_GET>( \
+-        void *rptr, void *lptr, size_t bytes, int pe);
++        void *rptr, void *lptr, size_t bytes, int pe, int channelId);
+ 
+ TRANSFER_REPT_FOR_ALL_SCOPES(TRANSFER_DECL_RMA_NBI)
+ 
+@@ -217,20 +217,20 @@ TRANSFER_REPT_FOR_EXTENDED_AMO_TYPES(TRANSFER_DECL_AMO_FETCH);
+ 
+ template <typename T>
+ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_transfer_amo_nonfetch(
+-    void *rptr, T value, int pe, nvshmemi_amo_t op) {
++    void *rptr, T value, int pe, nvshmemi_amo_t op, int channelId) {
+ #ifdef NVSHMEM_IBGDA_SUPPORT
+     if (nvshmemi_device_state_d.ibgda_is_initialized) {
+         nvshmemi_ibgda_amo_nonfetch<T>(rptr, value, pe, op);
+     } else
+ #endif
+     {
+-        nvshmemi_proxy_amo_nonfetch<T>(rptr, value, pe, op);
++        nvshmemi_proxy_amo_nonfetch<T>(rptr, value, pe, op, channelId);
+     }
+ }
+ 
+ #define TRANSFER_DECL_AMO_NONFETCH(Type)                                                        \
+     template __device__ void nvshmemi_transfer_amo_nonfetch<Type>(void *rptr, const Type value, \
+-                                                                  int pe, nvshmemi_amo_t op);
++                                                                  int pe, nvshmemi_amo_t op, int channelId);
+ 
+ TRANSFER_REPT_FOR_STANDARD_AMO_TYPES(TRANSFER_DECL_AMO_NONFETCH);
+ TRANSFER_REPT_FOR_EXTENDED_AMO_TYPES(TRANSFER_DECL_AMO_NONFETCH);
+diff --git a/src/modules/transport/common/transport_common.h b/src/modules/transport/common/transport_common.h
+index 67f93a0..e6e75c1 100644
+--- a/src/modules/transport/common/transport_common.h
++++ b/src/modules/transport/common/transport_common.h
+@@ -15,7 +15,7 @@
+ #include "internal/host_transport/transport.h"           // for nvshmem_tran...
+ 
+ #define MAXPATHSIZE 1024
+-#define MAX_TRANSPORT_EP_COUNT 1
++//#define MAX_TRANSPORT_EP_COUNT getenv("NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT") ? atoi(getenv("NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT")) : 1
+ 
+ #define likely(x) __builtin_expect((x), 1)
+ #define unlikely(x) __builtin_expect((x), 0)
+diff --git a/src/modules/transport/ibdevx/ibdevx.cpp b/src/modules/transport/ibdevx/ibdevx.cpp
+index a86a24a..a6c9eb8 100644
+--- a/src/modules/transport/ibdevx/ibdevx.cpp
++++ b/src/modules/transport/ibdevx/ibdevx.cpp
+@@ -39,6 +39,8 @@
+ 
+ #define ibdevx_MAX_INLINE_SIZE 128
+ 
++static int MAX_TRANSPORT_EP_COUNT = getenv("NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT") ? atoi(getenv("NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT")) : 1;
++
+ int ibdevx_srq_depth;
+ #define ibdevx_SRQ_MASK (ibdevx_srq_depth - 1)
+ 
+@@ -59,7 +61,7 @@ int ibdevx_qp_depth;
+ #error Unknown cache line size
+ #endif
+ 
+-#define MAX_NUM_HCAS 16
++#define MAX_NUM_HCAS 32
+ #define MAX_NUM_PORTS 4
+ #define MAX_NUM_PES_PER_NODE 32
+ #define BAR_READ_BUFSIZE (sizeof(uint64_t))
+@@ -825,7 +827,7 @@ out:
+ 
+ int nvshmemt_ibdevx_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
+                                    nvshmem_mem_handle_t *mem_handle_in, void *buf, size_t length,
+-                                   nvshmem_transport_t t, bool local_only) {
++                                   nvshmem_transport_t t, bool local_only, int index) {
+     int status = 0;
+     struct nvshmem_transport *transport = (struct nvshmem_transport *)t;
+     transport_ibdevx_state_t *ibdevx_state = (transport_ibdevx_state_t *)transport->state;
+@@ -1026,7 +1028,7 @@ static inline void nvshmemt_ibdevx_post_send(struct ibdevx_ep *ep, void *bb,
+ 
+ int nvshmemt_ibdevx_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
+                         rma_memdesc_t *remote, rma_memdesc_t *local, rma_bytesdesc_t bytesdesc,
+-                        int is_proxy) {
++                        int is_proxy, int channelId) {
+     struct ibdevx_ep *ep;
+     struct ibdevx_rw_wqe *wqe;
+     transport_ibdevx_state_t *ibdevx_state = (transport_ibdevx_state_t *)tcurr->state;
+@@ -1064,13 +1066,13 @@ int nvshmemt_ibdevx_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb
+ 
+     /* TODO: store the rkeys in BE so we don't have to convert. */
+     wqe->raddr.raddr = htobe64((uintptr_t)remote->ptr);
+-    wqe->raddr.rkey = htobe32(((struct nvshmemt_ib_common_mem_handle *)remote->handle)->rkey);
++    wqe->raddr.rkey = htobe32(((struct nvshmemt_ib_common_mem_handle *)remote->handle[0])->rkey);
+ 
+     if (verb.desc != NVSHMEMI_OP_P) {
+         assert(bytesdesc.nelems < (UINT32_MAX / bytesdesc.elembytes));
+         wqe->data.data_seg.byte_count = htobe32((uint32_t)(bytesdesc.nelems * bytesdesc.elembytes));
+         wqe->data.data_seg.lkey =
+-            htobe32(((struct nvshmemt_ib_common_mem_handle *)local->handle)->lkey);
++            htobe32(((struct nvshmemt_ib_common_mem_handle *)local->handle[0])->lkey);
+         wqe->data.data_seg.addr = htobe64((uintptr_t)local->ptr);
+     } else {
+         uint32_t bytecount = bytesdesc.nelems * bytesdesc.elembytes;
+@@ -1151,14 +1153,14 @@ static inline int nvshmemt_ibdevx_amo_32(struct nvshmem_transport *tcurr, int pe
+         htobe32((uint32_t)(wqe_size / NVSHMEMT_IBDEVX_MLX5_SEND_WQE_DS) | ep->qpid << 8);
+     wqe->raddr.raddr = htobe64((uintptr_t)remote->remote_memdesc.ptr);
+     wqe->raddr.rkey =
+-        htobe32(((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle)->rkey);
++        htobe32(((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle[0])->rkey);
+     wqe->data.byte_count = htobe32((uint32_t)4);
+ 
+     if (verb.desc < NVSHMEMI_AMO_END_OF_NONFETCH) {
+         wqe->data.lkey = htobe32(local_dummy_mr.lkey);
+         wqe->data.addr = htobe64((uintptr_t)local_dummy_mr.mr->addr);
+     } else {
+-        ret_handle = (struct nvshmemt_ib_common_mem_handle *)remote->ret_handle;
++        ret_handle = (struct nvshmemt_ib_common_mem_handle *)remote->ret_handle[0];
+         assert(ret_handle != NULL);
+         wqe->data.lkey = htobe32(ret_handle->lkey);
+         wqe->data.addr = htobe64((uintptr_t)remote->retptr);
+@@ -1317,7 +1319,7 @@ static inline int nvshmemt_ibdevx_amo_64(struct nvshmem_transport *tcurr, int pe
+                                            sizeof(struct ibdevx_atomic_64_masked_fetch_add_seg));
+     raddr->raddr = htobe64((uintptr_t)remote->remote_memdesc.ptr);
+     raddr->rkey =
+-        htobe32(((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle)->rkey);
++        htobe32(((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle[0])->rkey);
+ 
+     switch (verb.desc) {
+         case NVSHMEMI_AMO_FETCH_INC:
+@@ -1436,7 +1438,7 @@ static inline int nvshmemt_ibdevx_amo_64(struct nvshmem_transport *tcurr, int pe
+         data->lkey = htobe32(local_dummy_mr.lkey);
+         data->addr = htobe64((uintptr_t)local_dummy_mr.mr->addr);
+     } else {
+-        ret_handle = (struct nvshmemt_ib_common_mem_handle *)remote->ret_handle;
++        ret_handle = (struct nvshmemt_ib_common_mem_handle *)remote->ret_handle[0];
+         assert(ret_handle != NULL);
+         data->lkey = htobe32(ret_handle->lkey);
+         data->addr = htobe64((uintptr_t)remote->retptr);
+@@ -1458,7 +1460,7 @@ out:
+ }
+ 
+ int nvshmemt_ibdevx_amo(struct nvshmem_transport *tcurr, int pe, void *curetptr, amo_verb_t verb,
+-                        amo_memdesc_t *remote, amo_bytesdesc_t bytesdesc, int is_proxy) {
++                        amo_memdesc_t *remote, amo_bytesdesc_t bytesdesc, int is_proxy, int channelId) {
+     int status = 0;
+ 
+     if (bytesdesc.elembytes == 4) {
+diff --git a/src/modules/transport/ibgda/ibgda.cpp b/src/modules/transport/ibgda/ibgda.cpp
+index ef325cd..1e0259e 100644
+--- a/src/modules/transport/ibgda/ibgda.cpp
++++ b/src/modules/transport/ibgda/ibgda.cpp
+@@ -54,7 +54,7 @@
+ #define NVSHMEMI_IBGDA_CQE_SIZE 64
+ #define NVSHMEMI_IBGDA_MAX_INLINE_SIZE (8 * 32)
+ 
+-#define MAX_NUM_HCAS 16
++#define MAX_NUM_HCAS 32
+ #define MAX_NUM_PORTS 4
+ #define MAX_NUM_PES_PER_NODE 32
+ 
+@@ -198,6 +198,7 @@ struct ibgda_ep {
+     off_t dbr_offset;
+ 
+     struct ibgda_cq *send_cq;
++    struct ibgda_cq *recv_cq;
+     struct ibv_ah *ah;
+ 
+     uint32_t user_index;
+@@ -494,7 +495,7 @@ int nvshmemt_ibgda_can_reach_peer(int *access, struct nvshmem_transport_pe_info
+ 
+ int nvshmemt_ibgda_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
+                                   nvshmem_mem_handle_t *mem_handle_in, void *buf, size_t length,
+-                                  nvshmem_transport_t t, bool local_only) {
++                                  nvshmem_transport_t t, bool local_only, int index) {
+     int status = 0;
+     struct nvshmem_transport *transport = (struct nvshmem_transport *)t;
+     nvshmemt_ibgda_state_t *ibgda_state = (nvshmemt_ibgda_state_t *)transport->state;
+@@ -1066,7 +1067,7 @@ static inline void ibgda_nic_control_free(struct ibgda_mem_object *mobject) {
+         ibgda_host_mem_free(mobject);
+ }
+ 
+-static int ibgda_create_cq(struct ibgda_cq **pgcq, struct ibgda_device *device) {
++static int ibgda_create_cq(struct ibgda_cq **pgcq, struct ibgda_device *device, int cc = 1) {
+     int status = 0;
+ 
+     struct ibgda_cq *gcq = NULL;
+@@ -1117,7 +1118,7 @@ static int ibgda_create_cq(struct ibgda_cq **pgcq, struct ibgda_device *device)
+     cq_context = DEVX_ADDR_OF(create_cq_in, cmd_in, cq_context);
+     DEVX_SET(cqc, cq_context, dbr_umem_valid, IBGDA_MLX5_UMEM_VALID_ENABLE);
+     DEVX_SET(cqc, cq_context, cqe_sz, MLX5_CQE_SIZE_64B);
+-    DEVX_SET(cqc, cq_context, cc, 0x1);  // Use collapsed CQ
++    DEVX_SET(cqc, cq_context, cc, cc);  // Use collapsed CQ
+     DEVX_SET(cqc, cq_context, oi, 0x1);  // Allow overrun
+     DEVX_SET(cqc, cq_context, dbr_umem_id, dbr_umem->umem_id);
+     DEVX_SET(cqc, cq_context, log_cq_size, IBGDA_ILOG2_OR0(num_cqe));
+@@ -1538,7 +1539,8 @@ static int ibgda_create_cq_shared_objects(nvshmemt_ibgda_state_t *ibgda_state,
+ 
+     struct ibv_context *context = device->context;
+ 
+-    unsigned int num_cqs = device->dci.num_eps + device->rc.num_eps_per_pe * n_pes;
++    // Each RC qp has one send CQ and one recv CQ.
++    unsigned int num_cqs = device->dci.num_eps + device->rc.num_eps_per_pe * n_pes * 2;
+ 
+     assert(ibgda_qp_depth > 0);
+     size_t num_cqe = IBGDA_ROUND_UP_POW2_OR_0(ibgda_qp_depth);
+@@ -1701,7 +1703,8 @@ static int ibgda_create_qp_shared_objects(nvshmemt_ibgda_state_t *ibgda_state,
+     }
+ 
+     // Allocate and map WQ buffer for all QPs.
+-    wq_buf_size_per_qp = num_wqebb * MLX5_SEND_WQE_BB;  // num_wqebb is always a power of 2
++    // Todo: reduce the size of wq buffer.
++    wq_buf_size_per_qp = num_wqebb * MLX5_SEND_WQE_BB * 2;  // num_wqebb is always a power of 2
+     wq_buf_size = wq_buf_size_per_qp * num_eps;
+     status = ibgda_nic_control_alloc(&wq_mobject, wq_buf_size, IBGDA_GPAGE_SIZE);
+     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "cannot allocate wq buf.\n");
+@@ -1882,8 +1885,11 @@ static int ibgda_create_qp(struct ibgda_ep **ep_ptr, struct ibgda_device *device
+     int cqe_version = 0;
+ 
+     struct ibgda_cq *send_cq = NULL;
++    struct ibgda_cq *recv_cq = NULL;
+ 
+     size_t num_wqebb = IBGDA_ROUND_UP_POW2_OR_0(ibgda_qp_depth);
++    size_t num_recv_wqe = ibgda_qp_depth;
++    size_t recv_wqe_size = 16;
+ 
+     int status = 0;
+ 
+@@ -1911,6 +1917,11 @@ static int ibgda_create_qp(struct ibgda_ep **ep_ptr, struct ibgda_device *device
+     status = ibgda_create_cq(&send_cq, device);
+     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "ibgda_create_cq failed.\n");
+ 
++    if (qp_type == NVSHMEMI_IBGDA_DEVICE_QP_TYPE_RC) {
++        status = ibgda_create_cq(&recv_cq, device);
++        NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "ibgda_create_cq failed.\n");
++    }
++
+     ep = (struct ibgda_ep *)calloc(1, sizeof(struct ibgda_ep));
+     NVSHMEMI_NULL_ERROR_JMP(ep, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
+                             "Unable to allocate mem for ep.\n");
+@@ -1939,12 +1950,9 @@ static int ibgda_create_qp(struct ibgda_ep **ep_ptr, struct ibgda_device *device
+     DEVX_SET(qpc, qp_context, pm_state, MLX5_QPC_PM_STATE_MIGRATED);
+     DEVX_SET(qpc, qp_context, pd, device->qp_shared_object.pdn);
+     DEVX_SET(qpc, qp_context, uar_page, uar_mobject->uar->page_id);  // BF register
+-    DEVX_SET(qpc, qp_context, rq_type, IBGDA_SRQ_TYPE_VALUE);        // Shared Receive Queue
+-    DEVX_SET(qpc, qp_context, srqn_rmpn_xrqn, device->qp_shared_object.srqn);
+     DEVX_SET(qpc, qp_context, cqn_snd, send_cq->cqn);
+-    DEVX_SET(qpc, qp_context, cqn_rcv, device->qp_shared_object.rcqn);
++    DEVX_SET(qpc, qp_context, cqn_rcv, qp_type == NVSHMEMI_IBGDA_DEVICE_QP_TYPE_RC ? recv_cq->cqn : device->qp_shared_object.rcqn);
+     DEVX_SET(qpc, qp_context, log_sq_size, IBGDA_ILOG2_OR0(num_wqebb));
+-    DEVX_SET(qpc, qp_context, log_rq_size, 0);
+     DEVX_SET(qpc, qp_context, cs_req, 0);                                     // Disable CS Request
+     DEVX_SET(qpc, qp_context, cs_res, 0);                                     // Disable CS Response
+     DEVX_SET(qpc, qp_context, dbr_umem_valid, IBGDA_MLX5_UMEM_VALID_ENABLE);  // Enable dbr_umem_id
+@@ -1953,6 +1961,15 @@ static int ibgda_create_qp(struct ibgda_ep **ep_ptr, struct ibgda_device *device
+     DEVX_SET(qpc, qp_context, dbr_umem_id, dbr_umem->umem_id);  // DBR buffer
+     DEVX_SET(qpc, qp_context, user_index, qp_idx);
+     DEVX_SET(qpc, qp_context, page_offset, 0);
++    if (qp_type == NVSHMEMI_IBGDA_DEVICE_QP_TYPE_RC){
++        DEVX_SET(qpc, qp_context, rq_type, 0);        // Regular recv queue
++        DEVX_SET(qpc, qp_context, log_rq_size, IBGDA_ILOG2(num_recv_wqe)); // 4 wqe
++        DEVX_SET(qpc, qp_context, log_rq_stride, IBGDA_ILOG2(recv_wqe_size) - 4); // max recv wqe size = 16B
++    } else {
++        DEVX_SET(qpc, qp_context, rq_type, IBGDA_SRQ_TYPE_VALUE);        // Shared Receive Queue, DC must use this.
++        DEVX_SET(qpc, qp_context, srqn_rmpn_xrqn, device->qp_shared_object.srqn);
++        DEVX_SET(qpc, qp_context, log_rq_size, 0);
++    }
+ 
+     ep->devx_qp = mlx5dv_devx_obj_create(context, cmd_in, sizeof(cmd_in), cmd_out, sizeof(cmd_out));
+     NVSHMEMI_NULL_ERROR_JMP(ep->devx_qp, status, NVSHMEMX_ERROR_INTERNAL, out,
+@@ -1962,9 +1979,9 @@ static int ibgda_create_qp(struct ibgda_ep **ep_ptr, struct ibgda_device *device
+     ep->portid = portid;
+ 
+     ep->sq_cnt = num_wqebb;
+-    ep->sq_buf_offset = 0;
++    ep->sq_buf_offset = num_recv_wqe * recv_wqe_size;
+ 
+-    ep->rq_cnt = 0;
++    ep->rq_cnt = num_recv_wqe;
+     ep->rq_buf_offset = 0;
+ 
+     ep->wq_mobject = device->qp_shared_object.wq_mobject;
+@@ -1978,6 +1995,7 @@ static int ibgda_create_qp(struct ibgda_ep **ep_ptr, struct ibgda_device *device
+     ep->uar_mobject = uar_mobject;
+ 
+     ep->send_cq = send_cq;
++    ep->recv_cq = recv_cq;
+ 
+     ep->qp_type = qp_type;
+ 
+@@ -1989,6 +2007,7 @@ out:
+     if (status) {
+         if (uar_mobject) ibgda_unmap_and_free_qp_uar(uar_mobject);
+         if (send_cq) ibgda_destroy_cq(send_cq);
++        if (recv_cq) ibgda_destroy_cq(recv_cq);
+         if (ep) free(ep);
+     }
+ 
+@@ -2287,6 +2306,10 @@ static int ibgda_destroy_ep(struct ibgda_ep *ep) {
+         ibgda_destroy_cq(ep->send_cq);
+     }
+ 
++    if (ep->recv_cq) {
++        ibgda_destroy_cq(ep->recv_cq);
++    }
++
+     if (ep->ah) {
+         ftable.destroy_ah(ep->ah);
+     }
+@@ -2318,7 +2341,7 @@ static void ibgda_get_device_qp(nvshmemi_ibgda_device_qp_t *dev_qp, struct ibgda
+     dev_qp->qpn = ep->qpn;
+ 
+     assert(ep->wq_mobject->has_gpu_mapping);
+-    dev_qp->tx_wq.wqe = (void *)((uintptr_t)ep->wq_mobject->aligned.gpu_ptr + ep->wq_offset);
++    dev_qp->tx_wq.wqe = (void *)((uintptr_t)ep->wq_mobject->aligned.gpu_ptr + ep->wq_offset + ep->sq_buf_offset);
+ 
+     if (ibgda_nic_handler == IBGDA_NIC_HANDLER_GPU) {
+         assert(ep->dbr_mobject->has_gpu_mapping);
+@@ -2330,6 +2353,12 @@ static void ibgda_get_device_qp(nvshmemi_ibgda_device_qp_t *dev_qp, struct ibgda
+     }
+ 
+     dev_qp->tx_wq.nwqes = ep->sq_cnt;
++    if (ep->qp_type == NVSHMEMI_IBGDA_DEVICE_QP_TYPE_RC) {
++        dev_qp->rx_wq.nwqes = ep->rq_cnt;
++        dev_qp->rx_wq.wqe = (void *)((uintptr_t)ep->wq_mobject->aligned.gpu_ptr + ep->wq_offset + ep->rq_buf_offset);
++        dev_qp->rx_wq.dbrec = (__be32 *)((uintptr_t)ep->dbr_mobject->aligned.gpu_ptr + ep->dbr_offset);
++        dev_qp->rx_wq.bf = (void *)ep->uar_mobject->aligned.gpu_ptr;
++    }
+ 
+     ibuf_dci_start = (uintptr_t)device->qp_shared_object.internal_buf.mem_object->aligned.gpu_ptr;
+     ibuf_rc_start = ibuf_dci_start + (size_per_dci * device->dci.num_eps);
+@@ -2379,6 +2408,9 @@ static int ibgda_setup_gpu_state(nvshmem_transport_t t) {
+     nvshmemi_ibgda_device_cq_t *cq_d = NULL;
+     nvshmemi_ibgda_device_cq_t *cq_h = NULL;
+ 
++    nvshmemi_ibgda_device_cq_t *recv_cq_d = NULL;
++    nvshmemi_ibgda_device_cq_t *recv_cq_h = NULL;
++
+     uint8_t *qp_group_switches_d = NULL;
+ 
+     const size_t mvars_offset = offsetof(nvshmemi_ibgda_device_qp_t, mvars);
+@@ -2386,6 +2418,8 @@ static int ibgda_setup_gpu_state(nvshmem_transport_t t) {
+     const size_t cons_t_offset = offsetof(nvshmemi_ibgda_device_qp_management_t, tx_wq.cons_idx);
+     const size_t wqe_h_offset = offsetof(nvshmemi_ibgda_device_qp_management_t, tx_wq.resv_head);
+     const size_t wqe_t_offset = offsetof(nvshmemi_ibgda_device_qp_management_t, tx_wq.ready_head);
++    const size_t rx_resv_head_offset = offsetof(nvshmemi_ibgda_device_qp_management_t, rx_wq.resv_head);
++    const size_t rx_cons_offset = offsetof(nvshmemi_ibgda_device_qp_management_t, rx_wq.cons_idx);
+ 
+     nvshmemi_ibgda_device_qp_map_type_t rc_map_type = NVSHMEMI_IBGDA_DEVICE_QP_MAP_TYPE_INVALID;
+     nvshmemi_ibgda_device_qp_map_type_t dc_map_type = NVSHMEMI_IBGDA_DEVICE_QP_MAP_TYPE_INVALID;
+@@ -2421,7 +2455,7 @@ static int ibgda_setup_gpu_state(nvshmem_transport_t t) {
+         num_dct_handles += device->dct.num_eps * n_pes;
+         num_dci_handles += device->dci.num_eps;
+         num_rc_handles += device->rc.num_eps_per_pe * n_pes;
+-        num_cq_handles += device->dci.num_eps + (device->rc.num_eps_per_pe * (n_pes - 1));
++        num_cq_handles += device->dci.num_eps + (device->rc.num_eps_per_pe * (n_pes - 1) * 2);
+         num_shared_dci_handles += device->dci.num_shared_eps;
+     }
+     assert(num_dci_handles - num_shared_dci_handles >= 0);
+@@ -2456,6 +2490,10 @@ static int ibgda_setup_gpu_state(nvshmem_transport_t t) {
+     for (int i = 0; i < num_cq_handles; i++) {
+         nvshmemi_init_ibgda_device_cq(cq_h[i]);
+     }
++
++    recv_cq_h = (nvshmemi_ibgda_device_cq_t *)calloc(1, sizeof(*recv_cq_h));
++    NVSHMEMI_NULL_ERROR_JMP(recv_cq_h, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out, "recv_cq calloc err.");
++    nvshmemi_init_ibgda_device_cq(recv_cq_h[0]);
+     /* allocate host memory for dct, rc, cq, dci end */
+ 
+     /* allocate device memory for dct, rc, cq, dci start */
+@@ -2559,6 +2597,15 @@ static int ibgda_setup_gpu_state(nvshmem_transport_t t) {
+                 }
+ 
+                 ++cq_idx;
++
++                rc_h[arr_idx].rx_wq.cq = &cq_d[cq_idx];
++
++                ibgda_get_device_cq(&cq_h[cq_idx], device->rc.eps[i]->recv_cq);
++                cq_h[cq_idx].resv_head = (uint64_t *)(base_mvars_d_addr + rx_resv_head_offset);
++                cq_h[cq_idx].cons_idx = (uint64_t *)(base_mvars_d_addr + rx_cons_offset);
++                cq_h[cq_idx].qpn = rc_h[arr_idx].qpn;
++                cq_h[cq_idx].qp_type = rc_h[arr_idx].qp_type;
++                ++cq_idx;
+             }
+         }
+     }
+@@ -2936,17 +2983,20 @@ int nvshmemt_ibgda_connect_endpoints(nvshmem_transport_t t, int *selected_dev_id
+         INFO(ibgda_state->log_level, "Creating %d RC QPs", device->rc.num_eps_per_pe);
+         for (int i = 0; i < num_rc_eps; ++i) {
+             // Do not create loopback to self
+-            if (i / device->rc.num_eps_per_pe == mype) {
++            int dst_pe = (i + 1 + mype) % n_pes;
++            int offset = i / n_pes;
++            int mapped_i = dst_pe * device->rc.num_eps_per_pe + offset;
++            if (dst_pe == mype) {
+                 continue;
+             }
+-            status = ibgda_create_qp(&device->rc.eps[i], device, portid, i,
++            status = ibgda_create_qp(&device->rc.eps[mapped_i], device, portid, mapped_i,
+                                      NVSHMEMI_IBGDA_DEVICE_QP_TYPE_RC);
+             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+-                                  "ibgda_create_dci failed on RC #%d.", i);
++                                  "ibgda_create_dci failed on RC #%d.", mapped_i);
+ 
+-            status = ibgda_get_rc_handle(&local_rc_handles[i], device->rc.eps[i], device);
++            status = ibgda_get_rc_handle(&local_rc_handles[mapped_i], device->rc.eps[mapped_i], device);
+             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+-                                  "ibgda_get_rc_handle failed on RC #%d.", i);
++                                  "ibgda_get_rc_handle failed on RC #%d.", mapped_i);
+         }
+ 
+         if (num_rc_eps) {
+diff --git a/src/modules/transport/ibrc/ibrc.cpp b/src/modules/transport/ibrc/ibrc.cpp
+index 3604ca2..78185c7 100644
+--- a/src/modules/transport/ibrc/ibrc.cpp
++++ b/src/modules/transport/ibrc/ibrc.cpp
+@@ -48,6 +48,8 @@
+ 
+ #define IBRC_MAX_INLINE_SIZE 128
+ 
++static int MAX_TRANSPORT_EP_COUNT = getenv("NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT") ? atoi(getenv("NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT")) : 1;
++
+ int ibrc_srq_depth;
+ #define IBRC_SRQ_MASK (ibrc_srq_depth - 1)
+ 
+@@ -65,9 +67,10 @@ int ibrc_qp_depth;
+ #error Unknown cache line size
+ #endif
+ 
+-#define MAX_NUM_HCAS 16
++#define MAX_NUM_HCAS 32
+ #define MAX_NUM_PORTS 4
+ #define MAX_NUM_PES_PER_NODE 32
++#define MAX_DEVS_PER_NIC 2
+ #ifdef NVSHMEM_USE_GDRCOPY
+ #define BAR_READ_BUFSIZE (2 * 1024 * 1024)
+ #else
+@@ -151,13 +154,15 @@ typedef struct {
+     int n_dev_ids;
+     int proxy_ep_idx;
+     int ep_count;
+-    int selected_dev_id;
++    int selected_dev_id[MAX_DEVS_PER_NIC];
+     int log_level;
+     bool dmabuf_support;
+-    struct ibrc_ep **ep;
++    struct ibrc_ep **ep[MAX_DEVS_PER_NIC];
+     struct transport_mem_handle_info_cache *cache;
+     struct nvshmemi_options_s *options;
+     struct nvshmemi_cuda_fn_table *table;
++    int ndevs;
++    int rma_index;
+ } transport_ibrc_state_t;
+ 
+ typedef struct ibrc_mem_handle_info {
+@@ -170,7 +175,7 @@ typedef struct ibrc_mem_handle_info {
+     gdr_mh_t mh;
+ #endif
+ } ibrc_mem_handle_info_t;
+-ibrc_mem_handle_info_t *dummy_local_mem;
++ibrc_mem_handle_info_t *dummy_local_mem[MAX_DEVS_PER_NIC];
+ pthread_mutex_t ibrc_mutex_recv_progress;
+ pthread_mutex_t ibrc_mutex_send_progress;
+ 
+@@ -482,15 +487,17 @@ out:
+ }
+ int nvshmemt_ibrc_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
+                                  nvshmem_mem_handle_t *mem_handle_in, void *buf, size_t length,
+-                                 nvshmem_transport_t t, bool local_only) {
++                                 nvshmem_transport_t t, bool local_only, int index) {
+     int status = 0;
+     struct nvshmem_transport *transport = (struct nvshmem_transport *)t;
+     transport_ibrc_state_t *ibrc_state = (transport_ibrc_state_t *)transport->state;
+     struct ibrc_device *device = ((struct ibrc_device *)ibrc_state->devices +
+-                                  ibrc_state->dev_ids[ibrc_state->selected_dev_id]);
++                                  ibrc_state->dev_ids[ibrc_state->selected_dev_id[index]]);
+     struct ibrc_mem_handle_info *handle_info = NULL;
+     struct nvshmemt_ib_common_mem_handle *handle;
+ 
++    if (index >= ibrc_state->ndevs) return 0;
++
+     status = nvshmemt_ib_common_reg_mem_handle(
+         &ftable, device->pd, mem_handle, buf, length, local_only, ibrc_state->dmabuf_support,
+         ibrc_state->table, ibrc_state->log_level, ibrc_state->options->IB_ENABLE_RELAXED_ORDERING);
+@@ -547,19 +554,19 @@ int nvshmemt_ibrc_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
+         NVSHMEMI_NZ_ERROR_JMP(status, status, out, "Unable to cache mem handle in IB transport.");
+     }
+ 
+-    if (!dummy_local_mem) {
+-        dummy_local_mem = (ibrc_mem_handle_info_t *)malloc(sizeof(ibrc_mem_handle_info_t));
+-        NVSHMEMI_NULL_ERROR_JMP(dummy_local_mem, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
++    if (!dummy_local_mem[index]) {
++        dummy_local_mem[index] = (ibrc_mem_handle_info_t *)malloc(sizeof(ibrc_mem_handle_info_t));
++        NVSHMEMI_NULL_ERROR_JMP(dummy_local_mem[index], status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
+                                 "dummy_local_mem allocation failed\n");
+ 
+-        nvshmemi_ib_malloc(&dummy_local_mem->ptr, sizeof(uint64_t), ibrc_state->log_level);
+-        NVSHMEMI_NULL_ERROR_JMP(dummy_local_mem->ptr, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
++        nvshmemi_ib_malloc(&dummy_local_mem[index]->ptr, sizeof(uint64_t), ibrc_state->log_level);
++        NVSHMEMI_NULL_ERROR_JMP(dummy_local_mem[index]->ptr, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
+                                 "dummy_mem allocation failed\n");
+ 
+-        dummy_local_mem->mr = ftable.reg_mr(device->pd, dummy_local_mem->ptr, sizeof(uint64_t),
++        dummy_local_mem[index]->mr = ftable.reg_mr(device->pd, dummy_local_mem[index]->ptr, sizeof(uint64_t),
+                                             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+                                                 IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
+-        NVSHMEMI_NULL_ERROR_JMP(dummy_local_mem->mr, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
++        NVSHMEMI_NULL_ERROR_JMP(dummy_local_mem[index]->mr, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
+                                 "mem registration failed \n");
+     }
+ out:
+@@ -629,13 +636,15 @@ int nvshmemt_ibrc_finalize(nvshmem_transport_t transport) {
+         }
+         free(transport->device_pci_paths);
+     }
+-    if (state->ep) {
+-        int ep_total_count = state->ep_count * transport->n_pes;
+-        for (int i = 0; i < ep_total_count; i++) {
+-            status = ftable.destroy_qp(state->ep[i]->qp);
+-            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "ibv_destroy_qp failed \n");
++    for (int j = 0; j < state->ndevs; j++) {
++        if (state->ep[j]) {
++            int ep_total_count = state->ep_count * transport->n_pes;
++            for (int i = 0; i < ep_total_count; i++) {
++                status = ftable.destroy_qp(state->ep[j][i]->qp);
++                NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "ibv_destroy_qp failed \n");
++            }
++            free(state->ep[j]);
+         }
+-        free(state->ep);
+     }
+ 
+     if (ibrc_cst_ep) {
+@@ -674,13 +683,16 @@ int nvshmemt_ibrc_finalize(nvshmem_transport_t transport) {
+     // clear qp map
+     qp_map.clear();
+ 
+-    if (dummy_local_mem) {
+-        status = ftable.dereg_mr(dummy_local_mem->mr);
+-        NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "ibv_dereg_mr failed \n");
+-        free(dummy_local_mem);
+-        dummy_local_mem = NULL;
++    for (int i = 0; i < state->ndevs; i++) {
++        if (dummy_local_mem[i]) {
++            status = ftable.dereg_mr(dummy_local_mem[i]->mr);
++            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "ibv_dereg_mr failed \n");
++            free(dummy_local_mem[i]);
++            dummy_local_mem[i] = NULL;
++        }
+     }
+ 
++
+     if (bpool != NULL) {
+         while (!bpool_free.empty()) bpool_free.pop_back();
+ 
+@@ -1098,19 +1110,19 @@ out:
+ 
+ int nvshmemt_ibrc_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
+                       rma_memdesc_t *remote, rma_memdesc_t *local, rma_bytesdesc_t bytesdesc,
+-                      int is_proxy) {
++                      int is_proxy, int channelId) {
+     int status = 0;
+     transport_ibrc_state_t *ibrc_state = (transport_ibrc_state_t *)tcurr->state;
+     struct ibv_send_wr *sr, **bad_sr;
+     struct ibrc_ep *ep;
++    struct ibrc_ep *ep2;
+     struct ibv_sge *sge;
+     int op_id;
++    int index = channelId % ibrc_state->ndevs;
++    int qpIndex;
++    qpIndex = ((channelId / ibrc_state->ndevs) % (ibrc_state->ep_count / 2)) * 2 + (is_proxy ? ibrc_state->proxy_ep_idx : 0);
+ 
+-    if (is_proxy) {
+-        ep = ibrc_state->ep[(ibrc_state->ep_count * pe + ibrc_state->proxy_ep_idx)];
+-    } else {
+-        ep = ibrc_state->ep[(ibrc_state->ep_count * pe)];
+-    }
++    ep = ibrc_state->ep[index][(ibrc_state->ep_count * pe + qpIndex)];
+ 
+     status = check_poll_avail(ep, WAIT_ANY);
+     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "check_poll failed \n");
+@@ -1130,13 +1142,13 @@ int nvshmemt_ibrc_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
+     sr->sg_list = sge;
+ 
+     sr->wr.rdma.remote_addr = (uint64_t)remote->ptr;
+-    assert(remote->handle);
+-    sr->wr.rdma.rkey = ((struct nvshmemt_ib_common_mem_handle *)remote->handle)->rkey;
++    assert(remote->handle[index]);
++    sr->wr.rdma.rkey = ((struct nvshmemt_ib_common_mem_handle *)remote->handle[index])->rkey;
+     sge->length = bytesdesc.nelems * bytesdesc.elembytes;
+     sge->addr = (uintptr_t)local->ptr;
+     /* local->handle is unset for p operations since they are sent by value. */
+-    if (likely(local->handle != NULL)) {
+-        sge->lkey = ((struct nvshmemt_ib_common_mem_handle *)local->handle)->lkey;
++    if (likely(local->handle[index] != NULL)) {
++        sge->lkey = ((struct nvshmemt_ib_common_mem_handle *)local->handle[index])->lkey;
+     }
+     if (verb.desc == NVSHMEMI_OP_P) {
+         sr->opcode = IBV_WR_RDMA_WRITE;
+@@ -1160,7 +1172,7 @@ int nvshmemt_ibrc_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
+     }
+ 
+     TRACE(ibrc_state->log_level, "[%d] ibrc post_send dest handle %p rkey %x src handle %p lkey %x",
+-          getpid(), remote->handle, sr->wr.rdma.rkey, local->handle, sge->lkey);
++          getpid(), remote->handle[index], sr->wr.rdma.rkey, local->handle[index], sge->lkey);
+     status = ibv_post_send(ep->qp, sr, bad_sr);
+     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "ibv_post_send failed \n");
+ 
+@@ -1175,7 +1187,7 @@ out:
+ }
+ 
+ int nvshmemt_ibrc_amo(struct nvshmem_transport *tcurr, int pe, void *curetptr, amo_verb_t verb,
+-                      amo_memdesc_t *remote, amo_bytesdesc_t bytesdesc, int is_proxy) {
++                      amo_memdesc_t *remote, amo_bytesdesc_t bytesdesc, int is_proxy, int channelId) {
+     int status = 0;
+     transport_ibrc_state_t *ibrc_state = (transport_ibrc_state_t *)tcurr->state;
+     struct ibrc_ep *ep;
+@@ -1184,11 +1196,11 @@ int nvshmemt_ibrc_amo(struct nvshmem_transport *tcurr, int pe, void *curetptr, a
+     int op_id;
+     struct ibrc_atomic_op op;
+ 
+-    if (is_proxy) {
+-        ep = ibrc_state->ep[(ibrc_state->ep_count * pe + ibrc_state->proxy_ep_idx)];
+-    } else {
+-        ep = ibrc_state->ep[(ibrc_state->ep_count * pe)];
+-    }
++    int index = channelId % ibrc_state->ndevs;
++    int qpIndex;
++    qpIndex = ((channelId / ibrc_state->ndevs) % (ibrc_state->ep_count / 2)) * 2 + (is_proxy ? ibrc_state->proxy_ep_idx : 0);
++
++    ep = ibrc_state->ep[index][(ibrc_state->ep_count * pe + qpIndex)];
+ 
+     status = check_poll_avail(ep, WAIT_ANY);
+     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "check_poll failed \n");
+@@ -1213,14 +1225,14 @@ int nvshmemt_ibrc_amo(struct nvshmem_transport *tcurr, int pe, void *curetptr, a
+                 sr->send_flags = IBV_SEND_SIGNALED;
+ 
+                 sr->wr.atomic.remote_addr = (uint64_t)remote->remote_memdesc.ptr;
+-                assert(remote->remote_memdesc.handle);
++                assert(remote->remote_memdesc.handle[index]);
+                 sr->wr.atomic.rkey =
+-                    ((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle)->rkey;
++                    ((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle[index])->rkey;
+                 sr->wr.atomic.compare_add = remote->val;
+ 
+                 sge->length = bytesdesc.elembytes;
+-                sge->addr = (uintptr_t)dummy_local_mem->ptr;
+-                sge->lkey = dummy_local_mem->mr->lkey;
++                sge->addr = (uintptr_t)dummy_local_mem[index]->ptr;
++                sge->lkey = dummy_local_mem[index]->mr->lkey;
+                 goto post_op;
+             }
+         }
+@@ -1267,14 +1279,14 @@ int nvshmemt_ibrc_amo(struct nvshmem_transport *tcurr, int pe, void *curetptr, a
+                 sr->send_flags = IBV_SEND_SIGNALED;
+ 
+                 sr->wr.atomic.remote_addr = (uint64_t)remote->remote_memdesc.ptr;
+-                assert(remote->remote_memdesc.handle);
++                assert(remote->remote_memdesc.handle[index]);
+                 sr->wr.atomic.rkey =
+-                    ((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle)->rkey;
++                    ((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle[index])->rkey;
+                 sr->wr.atomic.compare_add = remote->val;
+ 
+                 sge->length = bytesdesc.elembytes;
+-                sge->addr = (uintptr_t)dummy_local_mem->ptr;
+-                sge->lkey = dummy_local_mem->mr->lkey;
++                sge->addr = (uintptr_t)dummy_local_mem[index]->ptr;
++                sge->lkey = dummy_local_mem[index]->mr->lkey;
+                 goto post_op;
+             }
+         } else if (verb.desc == NVSHMEMI_AMO_SIGNAL || verb.desc == NVSHMEMI_AMO_SIGNAL_SET) {
+@@ -1283,9 +1295,9 @@ int nvshmemt_ibrc_amo(struct nvshmem_transport *tcurr, int pe, void *curetptr, a
+             sr->send_flags |= IBV_SEND_INLINE;
+ 
+             sr->wr.rdma.remote_addr = (uint64_t)remote->remote_memdesc.ptr;
+-            assert(remote->remote_memdesc.handle);
++            assert(remote->remote_memdesc.handle[index]);
+             sr->wr.rdma.rkey =
+-                ((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle)->rkey;
++                ((struct nvshmemt_ib_common_mem_handle *)remote->remote_memdesc.handle[index])->rkey;
+ 
+             sge->length = bytesdesc.elembytes;
+             sge->addr = (uintptr_t)&remote->val;
+@@ -1367,14 +1379,15 @@ int nvshmemt_ibrc_quiet(struct nvshmem_transport *tcurr, int pe, int is_proxy) {
+     struct ibrc_ep *ep;
+     int status = 0;
+ 
+-    if (is_proxy) {
+-        ep = ibrc_state->ep[(pe * ibrc_state->ep_count + ibrc_state->proxy_ep_idx)];
+-    } else {
+-        ep = ibrc_state->ep[(pe * ibrc_state->ep_count)];
+-    }
++    for (int i = 0; i < ibrc_state->ndevs; i++) {
++        int j = (is_proxy ? ibrc_state->proxy_ep_idx : 0);
++        for (; j < ibrc_state->ep_count; j += 2) {
++            ep = ibrc_state->ep[i][(pe * ibrc_state->ep_count + j)];
+ 
+-    status = check_poll_avail(ep, WAIT_ALL /*1*/);
+-    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "check_poll failed \n");
++            status = check_poll_avail(ep, WAIT_ALL /*1*/);
++            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "check_poll failed \n");
++        }
++    }
+ 
+ #ifdef NVSHMEM_USE_GDRCOPY
+     while (atomics_acked < atomics_issued) {
+@@ -1445,7 +1458,7 @@ int nvshmemt_ibrc_connect_endpoints(nvshmem_transport_t t, int *selected_dev_ids
+     int n_pes = t->n_pes;
+     int ep_count;
+ 
+-    if (ibrc_state->selected_dev_id >= 0) {
++    if (ibrc_state->selected_dev_id[0] >= 0) {
+         NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INVALID_VALUE, out_already_connected,
+                            "Device already selected. IBRC only supports"
+                            " one NIC per PE.\n");
+@@ -1454,57 +1467,70 @@ int nvshmemt_ibrc_connect_endpoints(nvshmem_transport_t t, int *selected_dev_ids
+     if (num_selected_devs > 1) {
+         INFO(ibrc_state->log_level,
+              "IBRC only supports One NIC / PE. All other NICs will be ignored.");
++        num_selected_devs = std::min(num_selected_devs, MAX_DEVS_PER_NIC);
+     }
+ 
+     /* allocate all EPs for transport, plus 1 for the proxy thread. */
+-    ep_count = ibrc_state->ep_count = MAX_TRANSPORT_EP_COUNT + 1;
+-    ibrc_state->proxy_ep_idx = MAX_TRANSPORT_EP_COUNT;
++    ibrc_state->ndevs = num_selected_devs;
++    ep_count = ibrc_state->ep_count = MAX_TRANSPORT_EP_COUNT * 2;
++    ibrc_state->proxy_ep_idx = 1;
+ 
+-    ibrc_state->selected_dev_id = selected_dev_ids[0];
++    for (int i = 0; i < num_selected_devs; i++) {
++        ibrc_state->selected_dev_id[i] = selected_dev_ids[i];
+ 
+-    ibrc_state->ep = (struct ibrc_ep **)calloc(n_pes * ep_count, sizeof(struct ibrc_ep *));
+-    NVSHMEMI_NULL_ERROR_JMP(ibrc_state->ep, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
+-                            "failed allocating space for endpoints \n");
++        ibrc_state->ep[i] = (struct ibrc_ep **)calloc(n_pes * ep_count, sizeof(struct ibrc_ep *));
++        NVSHMEMI_NULL_ERROR_JMP(ibrc_state->ep[i], status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
++                                "failed allocating space for endpoints \n");
++    }
+ 
+     local_ep_handles =
+-        (struct ibrc_ep_handle *)calloc(n_pes * ep_count, sizeof(struct ibrc_ep_handle));
++        (struct ibrc_ep_handle *)calloc(n_pes * ep_count * num_selected_devs, sizeof(struct ibrc_ep_handle));
+     NVSHMEMI_NULL_ERROR_JMP(local_ep_handles, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
+                             "failed allocating space for local ep handles \n");
+ 
+-    ep_handles = (struct ibrc_ep_handle *)calloc(n_pes * ep_count, sizeof(struct ibrc_ep_handle));
++    ep_handles = (struct ibrc_ep_handle *)calloc(n_pes * ep_count * num_selected_devs, sizeof(struct ibrc_ep_handle));
+     NVSHMEMI_NULL_ERROR_JMP(ep_handles, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
+                             "failed allocating space for ep handles \n");
+ 
+     for (int j = 0; j < n_pes; j++) {
+         for (int k = 0; k < ep_count; k++) {
+-            nvshmemt_ibrc_ep_create(&ibrc_state->ep[j * ep_count + k], ibrc_state->selected_dev_id,
+-                                    t, ibrc_state);
+-            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+-                                  "transport create ep failed \n");
+-            status = nvshmemt_ibrc_ep_get_handle(&local_ep_handles[j * ep_count + k],
+-                                                 ibrc_state->ep[j * ep_count + k]);
+-            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+-                                  "transport get ep handle failed \n");
++            for (int l = 0; l < num_selected_devs; l++) {
++                nvshmemt_ibrc_ep_create(&ibrc_state->ep[l][j * ep_count + k], ibrc_state->selected_dev_id[l],
++                                        t, ibrc_state);
++                NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                                        "transport create ep failed \n");
++                status = nvshmemt_ibrc_ep_get_handle(&local_ep_handles[j * ep_count * num_selected_devs + k * num_selected_devs + l],
++                                                        ibrc_state->ep[l][j * ep_count + k]);
++                NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                                        "transport get ep handle failed \n");
++            }
++
+         }
+     }
+ 
+     status = t->boot_handle->alltoall((void *)local_ep_handles, (void *)ep_handles,
+-                                      sizeof(struct ibrc_ep_handle) * ep_count, t->boot_handle);
++                                      sizeof(struct ibrc_ep_handle) * ep_count * num_selected_devs, t->boot_handle);
+     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                           "allgather of ep handles failed \n");
+ 
+     for (int j = 0; j < n_pes; j++) {
+         for (int k = 0; k < ep_count; k++) {
+-            status = nvshmemt_ibrc_ep_connect(ibrc_state->ep[j * ep_count + k],
+-                                              &ep_handles[j * ep_count + k]);
+-            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+-                                  "transport create connect failed \n");
++            for (int l = 0; l < num_selected_devs; l++) {
++                status = nvshmemt_ibrc_ep_connect(ibrc_state->ep[l][j * ep_count + k],
++                                                  &ep_handles[j * ep_count * num_selected_devs + k * num_selected_devs + l]);
++                NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
++                                      "transport create connect failed \n");
++            }
++
+         }
+     }
+ out:
+     if (status) {
+-        ibrc_state->selected_dev_id = -1;
+-        if (ibrc_state->ep) free(ibrc_state->ep);
++        for (int i = 0; i < num_selected_devs; i++) {
++            ibrc_state->selected_dev_id[i] = -1;
++            if (ibrc_state->ep[i])
++                free(ibrc_state->ep[i]);
++        }
+     }
+ 
+ out_already_connected:
+@@ -1549,8 +1575,10 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table,
+                             "p2p state allocation failed \n");
+ 
+     /* set selected device ID to -1 to indicate none is selected. */
+-    ibrc_state->selected_dev_id = -1;
++    for (int i = 0; i < MAX_DEVS_PER_NIC; i++)
++        ibrc_state->selected_dev_id[i] = -1;
+     transport->state = (void *)ibrc_state;
++    ibrc_state->rma_index = 0;
+ 
+     ibrc_state->options = (struct nvshmemi_options_s *)calloc(1, sizeof(struct nvshmemi_options_s));
+     NVSHMEMI_NULL_ERROR_JMP(ibrc_state->options, status, NVSHMEMX_ERROR_INTERNAL, out,
+diff --git a/src/modules/transport/libfabric/libfabric.cpp b/src/modules/transport/libfabric/libfabric.cpp
+index e75e248..6a9f408 100644
+--- a/src/modules/transport/libfabric/libfabric.cpp
++++ b/src/modules/transport/libfabric/libfabric.cpp
+@@ -417,7 +417,7 @@ static int nvshmemt_libfabric_show_info(struct nvshmem_transport *transport, int
+ 
+ static int nvshmemt_libfabric_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
+                                   rma_memdesc_t *remote, rma_memdesc_t *local,
+-                                  rma_bytesdesc_t bytesdesc, int is_proxy) {
++                                  rma_bytesdesc_t bytesdesc, int is_proxy, int channelId) {
+     nvshmemt_libfabric_mem_handle_ep_t *remote_handle, *local_handle;
+     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
+     struct iovec p_op_l_iov;
+@@ -443,8 +443,8 @@ static int nvshmemt_libfabric_rma(struct nvshmem_transport *tcurr, int pe, rma_v
+     ep = &libfabric_state->eps[ep_idx];
+     target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + ep_idx;
+ 
+-    remote_handle = &((nvshmemt_libfabric_mem_handle_t *)remote->handle)->hdls[ep_idx];
+-    local_handle = &((nvshmemt_libfabric_mem_handle_t *)local->handle)->hdls[ep_idx];
++    remote_handle = &((nvshmemt_libfabric_mem_handle_t *)remote->handle[0])->hdls[ep_idx];
++    local_handle = &((nvshmemt_libfabric_mem_handle_t *)local->handle[0])->hdls[ep_idx];
+     op_size = bytesdesc.elembytes * bytesdesc.nelems;
+ 
+     if (verb.desc == NVSHMEMI_OP_P) {
+@@ -527,7 +527,7 @@ out:
+ 
+ static int nvshmemt_libfabric_gdr_amo(struct nvshmem_transport *transport, int pe, void *curetptr,
+                                       amo_verb_t verb, amo_memdesc_t *remote,
+-                                      amo_bytesdesc_t bytesdesc, int is_proxy) {
++                                      amo_bytesdesc_t bytesdesc, int is_proxy, int channelId) {
+     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
+     nvshmemt_libfabric_endpoint_t *ep;
+     nvshmemt_libfabric_gdr_op_ctx_t *amo;
+@@ -584,7 +584,7 @@ out:
+ 
+ static int nvshmemt_libfabric_amo(struct nvshmem_transport *transport, int pe, void *curetptr,
+                                   amo_verb_t verb, amo_memdesc_t *remote, amo_bytesdesc_t bytesdesc,
+-                                  int is_proxy) {
++                                  int is_proxy, int channelId) {
+     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
+     nvshmemt_libfabric_mem_handle_ep_t *remote_handle = NULL, *local_handle = NULL;
+     nvshmemt_libfabric_endpoint_t *ep;
+@@ -616,9 +616,9 @@ static int nvshmemt_libfabric_amo(struct nvshmem_transport *transport, int pe, v
+     target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + ep_idx;
+ 
+     remote_handle =
+-        &((nvshmemt_libfabric_mem_handle_t *)remote->remote_memdesc.handle)->hdls[ep_idx];
++        &((nvshmemt_libfabric_mem_handle_t *)remote->remote_memdesc.handle[0])->hdls[ep_idx];
+     if (verb.desc > NVSHMEMI_AMO_END_OF_NONFETCH) {
+-        local_handle = &((nvshmemt_libfabric_mem_handle_t *)remote->ret_handle)->hdls[ep_idx];
++        local_handle = &((nvshmemt_libfabric_mem_handle_t *)remote->ret_handle[0])->hdls[ep_idx];
+     }
+ 
+     if (bytesdesc.elembytes == 8) {
+@@ -853,7 +853,7 @@ out:
+ static int nvshmemt_libfabric_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
+                                              nvshmem_mem_handle_t *mem_handle_in, void *buf,
+                                              size_t length, nvshmem_transport_t t,
+-                                             bool local_only) {
++                                             bool local_only, int index) {
+     nvshmemt_libfabric_mem_handle_t *fabric_handle;
+     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)t->state;
+     cudaPointerAttributes attr = {};
+diff --git a/src/modules/transport/ucx/ucx.cpp b/src/modules/transport/ucx/ucx.cpp
+index 5a2a691..47c3b23 100644
+--- a/src/modules/transport/ucx/ucx.cpp
++++ b/src/modules/transport/ucx/ucx.cpp
+@@ -29,6 +29,8 @@
+ 
+ static void *ibv_handle;
+ 
++static int MAX_TRANSPORT_EP_COUNT = getenv("NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT") ? atoi(getenv("NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT")) : 1;
++
+ static std::deque<void *> pending_recv_headers;
+ static std::deque<void *> free_recv_headers;
+ 
+@@ -277,7 +279,7 @@ out:
+ 
+ int nvshmemt_ucx_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
+                                 nvshmem_mem_handle_t *mem_handle_in, void *buf, size_t length,
+-                                nvshmem_transport_t t, bool local_only) {
++                                nvshmem_transport_t t, bool local_only, int index) {
+     ucs_status_t ucs_rc;
+     transport_ucx_state_t *ucx_state = (transport_ucx_state_t *)t->state;
+     nvshmemt_ucx_mem_handle_t *handle = (nvshmemt_ucx_mem_handle_t *)mem_handle;
+@@ -509,7 +511,7 @@ static nvshmemt_ucx_bounce_buffer_t *nvshmemt_ucx_get_bounce_buffer(
+ 
+ int nvshmemt_ucx_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
+                      rma_memdesc_t *remote, rma_memdesc_t *local, rma_bytesdesc_t bytesdesc,
+-                     int is_proxy) {
++                     int is_proxy, int channelId) {
+     transport_ucx_state_t *ucx_state = (transport_ucx_state_t *)tcurr->state;
+     ucp_ep_h ep;
+     ucs_status_t ucs_rc;
+@@ -525,8 +527,8 @@ int nvshmemt_ucx_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
+     param.cb.send = nvshmemt_ucx_send_request_cb;
+     param.memory_type = UCS_MEMORY_TYPE_CUDA;
+ 
+-    assert(remote->handle);
+-    mem_handle = (nvshmemt_ucx_mem_handle_t *)remote->handle;
++    assert(remote->handle[0]);
++    mem_handle = (nvshmemt_ucx_mem_handle_t *)remote->handle[0];
+     if (is_proxy) {
+         ep_index = (ucx_state->ep_count * pe + ucx_state->proxy_ep_idx);
+         rkey_ptr = &mem_handle->ep_rkey_proxy;
+@@ -732,7 +734,7 @@ int nvshmemt_ucx_process_amos(struct nvshmem_transport *transport) {
+ 
+ int nvshmemt_ucx_local_amo(struct nvshmem_transport *transport, int pe, void *curetptr,
+                            amo_verb_t verb, amo_memdesc_t *remote, amo_bytesdesc_t bytesdesc,
+-                           int is_proxy) {
++                           int is_proxy, int channelId) {
+ #ifdef NVSHMEM_USE_GDRCOPY
+     transport_ucx_state_t *ucx_state = (transport_ucx_state_t *)transport->state;
+     ucs_status_ptr_t ucs_rc;
+@@ -794,7 +796,7 @@ int nvshmemt_ucx_local_amo(struct nvshmem_transport *transport, int pe, void *cu
+ 
+ int nvshmemt_ucx_remote_amo(struct nvshmem_transport *transport, int pe, void *curetptr,
+                             amo_verb_t verb, amo_memdesc_t *remote, amo_bytesdesc_t bytesdesc,
+-                            int is_proxy) {
++                            int is_proxy, int channelId) {
+     transport_ucx_state_t *ucx_state = (transport_ucx_state_t *)transport->state;
+     ucp_ep_h ep;
+     ucs_status_t ucs_rc;
+@@ -813,8 +815,8 @@ int nvshmemt_ucx_remote_amo(struct nvshmem_transport *transport, int pe, void *c
+     param.memory_type = UCS_MEMORY_TYPE_CUDA;
+     param.datatype = ucp_dt_make_contig(bytesdesc.elembytes);
+ 
+-    assert(remote->remote_memdesc.handle);
+-    mem_handle = (nvshmemt_ucx_mem_handle_t *)remote->remote_memdesc.handle;
++    assert(remote->remote_memdesc.handle[0]);
++    mem_handle = (nvshmemt_ucx_mem_handle_t *)remote->remote_memdesc.handle[0];
+     if (is_proxy) {
+         ep_index = (ucx_state->ep_count * pe + ucx_state->proxy_ep_idx);
+         rkey_ptr = &mem_handle->ep_rkey_proxy;
