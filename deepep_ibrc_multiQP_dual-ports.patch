@@ -1,0 +1,79 @@
+From 92d7679da64214907f6850b1424a128ff92023ee Mon Sep 17 00:00:00 2001
+From: Zhangmj0621 <2270170683@qq.com>
+Date: Wed, 9 Apr 2025 16:08:21 +0800
+Subject: [PATCH] support multiQP
+
+---
+ csrc/kernels/internode.cu | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/csrc/kernels/internode.cu b/csrc/kernels/internode.cu
+index 59b1b5e..e8a9fe4 100644
+--- a/csrc/kernels/internode.cu
++++ b/csrc/kernels/internode.cu
+@@ -565,7 +565,7 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
+                 rdma_channel_meta.send_buffer(dst_rdma_rank)[lane_id] = -rdma_channel_prefix_matrix[dst_rdma_rank * num_channels + channel_id] - 1;
+             }
+             nvshmemx_int_put_nbi_warp(rdma_channel_meta.recv_buffer(rdma_rank), rdma_channel_meta.send_buffer(dst_rdma_rank), NUM_MAX_NVL_PEERS * 2 + 2,
+-                                      translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank));
++                                      translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank), channel_id);
+         }
+         nvshmem_fence();
+         sync_rdma_sender_smem();
+@@ -713,7 +713,7 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
+                     nvshmemx_int8_put_nbi_warp(rdma_channel_data.recv_buffer(rdma_rank) + dst_slot_idx * num_bytes_per_rdma_token,
+                                                rdma_channel_data.send_buffer(dst_rdma_rank) + dst_slot_idx * num_bytes_per_rdma_token,
+                                                num_bytes_per_rdma_token * num_tokens_to_issue,
+-                                               translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank));
++                                               translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank), channel_id);
+                     nvshmem_fence();
+                 } else {
+                     // Lighter fence for local RDMA rank
+@@ -726,7 +726,7 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
+                     last_issued_tail += num_tokens_to_issue;
+                     num_tokens_to_send -= num_tokens_to_issue;
+                     nvshmemx_signal_op(rdma_channel_tail.buffer(rdma_rank), num_tokens_to_issue, NVSHMEM_SIGNAL_ADD,
+-                                       translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank));
++                                       translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank), channel_id);
+                 }
+             }
+         }
+@@ -927,7 +927,7 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
+             // Update remote head
+             if (min_head != std::numeric_limits<int>::max() and min_head >= last_head + num_max_rdma_chunked_send_tokens and lane_id < kNumRDMARanks) {
+                 nvshmemx_signal_op(rdma_channel_head.buffer(rdma_rank), min_head - last_head, NVSHMEM_SIGNAL_ADD,
+-                                   translate_dst_rdma_rank<kLowLatencyMode>(lane_id, nvl_rank));
++                                   translate_dst_rdma_rank<kLowLatencyMode>(lane_id, nvl_rank), channel_id);
+                 last_head = min_head;
+             }
+ 
+@@ -1561,7 +1561,7 @@ combine(int4* combined_x, float* combined_topk_weights,
+                         nvshmemx_int8_put_nbi_warp(rdma_channel_data.recv_buffer(rdma_rank) + rdma_slot_idx * num_bytes_per_rdma_token,
+                                                    rdma_channel_data.send_buffer(dst_rdma_rank) + rdma_slot_idx * num_bytes_per_rdma_token,
+                                                    num_chunked_tokens * num_bytes_per_rdma_token,
+-                                                   translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank));
++                                                   translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank), channel_id);
+                         nvshmem_fence();
+                     } else {
+                         memory_fence();
+@@ -1571,7 +1571,7 @@ combine(int4* combined_x, float* combined_topk_weights,
+                     __syncwarp();
+                     if (lane_id == 0)
+                         nvshmemx_signal_op(rdma_channel_tail.buffer(rdma_rank), num_chunked_tokens, NVSHMEM_SIGNAL_ADD,
+-                                           translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank));
++                                           translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank), channel_id);
+                 }
+             }
+ 
+@@ -1657,7 +1657,7 @@ combine(int4* combined_x, float* combined_topk_weights,
+                         min_head = min(min_head, rdma_receiver_rdma_head[i][dst_rdma_rank]);
+                     if (min_head != std::numeric_limits<int>::max() and min_head >= last_rdma_head + num_max_rdma_chunked_send_tokens and lane_id < kNumRDMARanks) {
+                         nvshmemx_signal_op(rdma_channel_head.buffer(rdma_rank), min_head - last_rdma_head, NVSHMEM_SIGNAL_ADD,
+-                                           translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank));
++                                           translate_dst_rdma_rank<kLowLatencyMode>(dst_rdma_rank, nvl_rank), channel_id);
+                         last_rdma_head = min_head;
+                     }
+                 } else {
+-- 
+2.49.0.windows.1
+
