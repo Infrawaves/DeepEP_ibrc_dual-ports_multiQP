@@ -9,7 +9,7 @@ The main contributions of this work are summarized as follows:
 
 ## Performance
 ### normal kernels test
-We evaluate standard kernels on the H100 GPU under RoCE in both single-port and dual-ports environments, with a primary focus on inter-node communication performance.
+We evaluate normal kernels on the H100 GPU under RoCE in both single-port and dual-ports environments, with a primary focus on inter-node communication performance.
 | Type | Dispatch #EP	| Bottleneck bandwidth | Combine #EP | Bottleneck bandwidth |
 |:-------:|:--------:|:-------:|:-------:|:--------:|
 | Internode | 16 | 60GB/s(RDMA) | 16 | 61GB/s(RDMA) |
@@ -48,6 +48,7 @@ The execution process is similar to DeepEP, we only make the following changes.
 
 1. Replace the internode.cu under /DeepEP/csrc/kernels/ with ours.
 2. Apply our patch on the original nvshmem_3.2.5-1(merged with the patch of DeepEP for convience and will continually support new version)
+3. Add environment varaibles NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT
 
 ```bash
 # replace internode.cu to use ibrc mode
@@ -56,6 +57,9 @@ cp internode.cu /path/to/installed/DeepEP/csrc/kernels/
 # use our modified nvshmem
 cd /path/to/installed/DeepEP
 git apply /path/to/installed/deepEP_ibrc_dual-ports_multiQP/nvshmem_ibrc.patch
+
+# set qp num in nvshmem
+-x NVSHMEM_IB_MAX_TRANSPORT_EP_COUNT=
 ```
 
 You can now use test_internode.py to test your performance of ibrc transport.
