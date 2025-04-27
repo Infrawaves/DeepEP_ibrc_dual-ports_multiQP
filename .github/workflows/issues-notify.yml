@@ -2,7 +2,7 @@ name: Notify New Issue to Feishu
 
 on:
   issues:
-    types: [opened]
+    types: [opened,edited]
 
 jobs:
   notify:
