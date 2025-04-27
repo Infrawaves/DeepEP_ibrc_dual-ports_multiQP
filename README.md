@@ -55,7 +55,7 @@ The execution process is similar to DeepEP, we only make the following changes.
 cp internode.cu /path/to/installed/DeepEP/csrc/kernels/
 
 # use our modified nvshmem
-cd /path/to/installed/DeepEP
+cd /path/to/installed/nvshmem_src
 git apply /path/to/installed/deepEP_ibrc_dual-ports_multiQP/nvshmem_ibrc.patch
 
 # set qp num in nvshmem
