@@ -44,7 +44,7 @@ Dual-ports environment
 Using the approach described above, we are also able to achieve high performance with NCCL version 2.22 and later.
 
 ## Quick start
-The execution process is similar to DeepEP, we only make the following changes.
+The execution process is similar to DeepEP, we only make the following changes. We not test DeepEP with commit id a84a24808fb0ea732f49b874cc456a69dde69076. We will fix the conflicts soon.
 
 1. Replace the internode.cu under /DeepEP/csrc/kernels/ with ours.
 2. Apply our patch on the original nvshmem_3.2.5-1(merged with the patch of DeepEP for convience and will continually support new version)
